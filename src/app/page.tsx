@@ -48,7 +48,7 @@ export default function HomePage() {
     chantiers[0] ||
     MOCK_CHANTIERS.martin;
 
-  const displayName = profil?.prenom || user?.email?.split("@")[0] || "Alex";
+  const displayName = profil?.prenom || (user?.email ? user.email.split("@")[0] : "");
 
   return (
     <div className="min-h-screen bg-bna-offwhite text-bna-anthracite flex flex-col justify-between">

@@ -7,10 +7,13 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  userName = "Alex",
-  currentDate = "Mardi 28 octobre",
+  userName = "",
+  currentDate = "Jeudi 29 octobre",
   onOpenAuth,
 }) => {
+  const initial = userName ? userName.charAt(0).toUpperCase() : "B";
+  const greeting = userName ? `Bonjour, ${userName}` : "Bonjour";
+
   return (
     <header className="pt-2 pb-4">
       <div className="flex items-center justify-between">
@@ -23,14 +26,14 @@ export const Header: React.FC<HeaderProps> = ({
           title="Mon profil & connexion"
           aria-label="Mon profil & connexion"
         >
-          {userName.charAt(0).toUpperCase()}
+          {initial}
         </button>
       </div>
 
       <div className="mt-4">
         <span className="text-xs font-medium text-bna-muted">{currentDate}</span>
         <h1 className="font-display font-bold text-2xl text-bna-anthracite mt-0.5 tracking-tight">
-          Bonjour, {userName}
+          {greeting}
         </h1>
       </div>
     </header>
