@@ -3,6 +3,9 @@ import { MetierType } from "./metier";
 export type UserRole = "dirigeant" | "chantier" | "commercial" | "administratif";
 export type TypeClient = "particulier" | "professionnel";
 export type StatutChantier = "a_venir" | "en_cours" | "termine" | "en_pause";
+export type StatutCalepinage = "brouillon" | "valide" | "archive";
+export type StatutBesoin = "a_commander" | "commande" | "recu" | "annule";
+export type TypeFixationTerrasse = "vis" | "clips";
 
 export interface EntrepriseRow {
   id: string;
@@ -64,6 +67,57 @@ export interface ChantierRow {
   updated_at: string;
 }
 
+export interface CalepinageRow {
+  id: string;
+  entreprise_id: string;
+  chantier_id: string;
+  metier: MetierType;
+  version: number;
+  statut: StatutCalepinage;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CalepinageTerrasseRow {
+  id: string;
+  calepinage_id: string;
+  entreprise_id: string;
+  longueur_m: number;
+  largeur_m: number;
+  orientation_lames: string;
+  largeur_lame_mm: number;
+  longueur_lame_m: number;
+  espace_inter_lames_mm: number;
+  entraxe_lambourdes_cm: number;
+  entraxe_plots_cm: number;
+  type_fixation: TypeFixationTerrasse;
+  marge_chutes_pct: number;
+  surface_m2: number;
+  ml_lames: number;
+  nb_lames: number;
+  ml_lambourdes: number;
+  nb_lambourdes: number;
+  nb_plots: number;
+  nb_fixations: number;
+  created_at: string;
+}
+
+export interface BesoinMateriauRow {
+  id: string;
+  entreprise_id: string;
+  chantier_id: string;
+  calepinage_id: string | null;
+  categorie: string;
+  designation: string;
+  unite: string;
+  quantite: number;
+  origine: "calepinage" | "manuel" | "import";
+  statut: StatutBesoin;
+  created_at: string;
+  updated_at: string;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -101,6 +155,32 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<ChantierRow, "id">>;
+      };
+      calepinages: {
+        Row: CalepinageRow;
+        Insert: Omit<CalepinageRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<CalepinageRow, "id">>;
+      };
+      calepinages_terrasse: {
+        Row: CalepinageTerrasseRow;
+        Insert: Omit<CalepinageTerrasseRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<Omit<CalepinageTerrasseRow, "id">>;
+      };
+      besoins_materiaux: {
+        Row: BesoinMateriauRow;
+        Insert: Omit<BesoinMateriauRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<BesoinMateriauRow, "id">>;
       };
     };
   };

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
       longueur_lame_m: Number(body.longueur_lame_m) || 3.0,
       espace_inter_lames_mm: Number(body.espace_inter_lames_mm) || 5.0,
       entraxe_lambourdes_cm: Number(body.entraxe_lambourdes_cm) || 40.0,
-      espace_entre_plots_cm: Number(body.espace_entre_plots_cm) || 50.0,
+      entraxe_plots_cm: Number(body.entraxe_plots_cm ?? body.espace_entre_plots_cm) || 50.0,
       marge_chutes_pct: Number(body.marge_chutes_pct) || 10.0,
     });
 
