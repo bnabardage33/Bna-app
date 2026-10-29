@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Header } from "@/components/dashboard/Header";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
 import { TaskListCard } from "@/components/dashboard/TaskListCard";
@@ -12,16 +12,43 @@ import { QuickActionModal } from "@/components/navigation/QuickActionModal";
 import { CalepinageModal } from "@/components/calepinage/CalepinageModal";
 import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
+import { Chantier } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
-import { HardHat, FileText, Sparkles } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { getChantiers } from "@/lib/services/chantierService";
+import { useAuth } from "@/lib/auth/useAuth";
+import { HardHat, FileText, Sparkles, Plus } from "lucide-react";
 
 export default function HomePage() {
+  const { user, profil } = useAuth();
   const [currentTab, setCurrentTab] = useState("accueil");
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [isCalepinageOpen, setIsCalepinageOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
+
+  const [chantiers, setChantiers] = useState<Chantier[]>(Object.values(MOCK_CHANTIERS));
   const [activeChantierId, setActiveChantierId] = useState<string>("martin");
 
-  const currentChantier = MOCK_CHANTIERS[activeChantierId] || MOCK_CHANTIERS.martin;
+  const supabase = createClient();
+
+  const refreshChantiers = async () => {
+    const list = await getChantiers(supabase);
+    setChantiers(list);
+  };
+
+  useEffect(() => {
+    refreshChantiers();
+  }, [user]);
+
+  const currentChantier =
+    chantiers.find((c) => c.id === activeChantierId) ||
+    chantiers[0] ||
+    MOCK_CHANTIERS.martin;
+
+  const displayName = profil?.prenom || user?.email?.split("@")[0] || "Alex";
 
   return (
     <div className="min-h-screen bg-bna-offwhite text-bna-anthracite flex flex-col justify-between">
@@ -30,12 +57,16 @@ export default function HomePage() {
         {/* ÉCRAN ACCUEIL (Figé & Inchangé) */}
         {currentTab === "accueil" && (
           <div className="animate-in fade-in duration-150">
-            <Header userName="Alex" currentDate="Mardi 28 octobre" />
+            <Header
+              userName={displayName}
+              currentDate="Jeudi 29 octobre"
+              onOpenAuth={() => setIsAuthOpen(true)}
+            />
             <WeatherCard />
             <TaskListCard />
             <FeaturedProjectCard
               onOpenCockpit={() => {
-                setActiveChantierId("martin");
+                setActiveChantierId(currentChantier.id);
                 setCurrentTab("cockpit");
               }}
             />
@@ -66,12 +97,22 @@ export default function HomePage() {
         {/* ÉCRAN CHANTIERS */}
         {currentTab === "chantiers" && (
           <div className="py-6 animate-in fade-in duration-150">
-            <div className="flex items-center gap-2 mb-4">
-              <HardHat className="w-6 h-6 text-bna-copper" />
-              <h1 className="font-display font-bold text-2xl">Chantiers</h1>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <HardHat className="w-6 h-6 text-bna-copper" />
+                <h1 className="font-display font-bold text-2xl">Chantiers</h1>
+              </div>
+              <button
+                onClick={() => setIsNewChantierOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper hover:bg-bna-copper-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-colors active:scale-95"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Nouveau</span>
+              </button>
             </div>
+
             <div className="space-y-2">
-              {Object.values(MOCK_CHANTIERS).map((ch) => (
+              {chantiers.map((ch) => (
                 <div
                   key={ch.id}
                   onClick={() => {
@@ -137,12 +178,29 @@ export default function HomePage() {
         isOpen={isQuickActionOpen}
         onClose={() => setIsQuickActionOpen(false)}
         onOpenCalepinage={() => setIsCalepinageOpen(true)}
+        onOpenNewChantier={() => {
+          setIsQuickActionOpen(false);
+          setIsNewChantierOpen(true);
+        }}
       />
 
       {/* Modal Calepinage Déterministe */}
       <CalepinageModal
         isOpen={isCalepinageOpen}
         onClose={() => setIsCalepinageOpen(false)}
+      />
+
+      {/* Modal Authentification Supabase */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
+
+      {/* Modal Nouveau Chantier Supabase */}
+      <NewChantierModal
+        isOpen={isNewChantierOpen}
+        onClose={() => setIsNewChantierOpen(false)}
+        onChantierCreated={refreshChantiers}
       />
     </div>
   );

@@ -7,12 +7,14 @@ interface QuickActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenCalepinage: () => void;
+  onOpenNewChantier?: () => void;
 }
 
 export const QuickActionModal: React.FC<QuickActionModalProps> = ({
   isOpen,
   onClose,
   onOpenCalepinage,
+  onOpenNewChantier,
 }) => {
   if (!isOpen) return null;
 
@@ -52,7 +54,13 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
       desc: "Créer une fiche projet",
       icon: FolderPlus,
       color: "bg-emerald-50 text-emerald-700",
-      action: () => alert("Nouveau chantier"),
+      action: () => {
+        if (onOpenNewChantier) {
+          onOpenNewChantier();
+        } else {
+          alert("Nouveau chantier");
+        }
+      },
     },
     {
       title: "Nouveau devis / client",

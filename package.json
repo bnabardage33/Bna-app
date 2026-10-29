@@ -10,6 +10,8 @@
     "postinstall": "node scripts/patch-next.js && termux-fix-shebang node_modules/.bin/*"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.118.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "next": "14.2.15",

@@ -1,4 +1,4 @@
-import { isValidDecimalInput, parseDecimal } from "./decimalInput";
+import { isValidDecimalInput, parseDecimal } from "./decimalInput.ts";
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
