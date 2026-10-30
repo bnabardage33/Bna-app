@@ -25,7 +25,7 @@ import { getClients, getContactsByClient } from "@/lib/services/clientService";
 import { createChantierRecord } from "@/lib/services/chantierService";
 import { useAuth } from "@/lib/auth/useAuth";
 import { NewClientModal } from "@/components/clients/NewClientModal";
-import { normalizeTitleCase } from "@/lib/formatters";
+import { normalizeTitleCase, formatPhoneNumber } from "@/lib/formatters";
 
 interface NewChantierModalProps {
   isOpen: boolean;
@@ -190,8 +190,10 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
 
   const selectedClientName = selectedClient
     ? selectedClient.type_client === "professionnel"
-      ? selectedClient.societe || selectedClient.nom
-      : `${selectedClient.prenom ? selectedClient.prenom + " " : ""}${selectedClient.nom}`
+      ? selectedClient.societe || normalizeTitleCase(selectedClient.nom)
+      : [normalizeTitleCase(selectedClient.prenom), normalizeTitleCase(selectedClient.nom)]
+          .filter(Boolean)
+          .join(" ")
     : "";
 
   const selectedContact = contacts.find((c) => c.id === contactId);
@@ -310,8 +312,10 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                       const isSelected = selectedClient?.id === client.id;
                       const cName =
                         client.type_client === "professionnel"
-                          ? client.societe || client.nom
-                          : `${client.prenom ? client.prenom + " " : ""}${client.nom}`;
+                          ? client.societe || normalizeTitleCase(client.nom)
+                          : [normalizeTitleCase(client.prenom), normalizeTitleCase(client.nom)]
+                              .filter(Boolean)
+                              .join(" ");
 
                       return (
                         <div
@@ -347,15 +351,17 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                                 </span>
                               </div>
                               <p className="text-[11px] text-bna-anthracite font-medium mt-1 truncate">
-                                📍 {client.adresse}
+                                📍 {normalizeTitleCase(client.adresse)}
                                 {client.adresse_complement ? ` (${client.adresse_complement})` : ""}
                               </p>
                               <p className="text-[11px] text-bna-muted">
-                                {client.code_postal} {client.ville}
+                                {client.code_postal} {normalizeTitleCase(client.ville)}
                               </p>
-                              <p className="text-[11px] font-semibold text-bna-anthracite mt-0.5">
-                                ☎ {client.telephone}
-                              </p>
+                              {client.telephone && (
+                                <p className="text-[11px] font-semibold text-bna-anthracite mt-0.5">
+                                  ☎ {formatPhoneNumber(client.telephone)}
+                                </p>
+                              )}
                             </div>
                           </div>
                           {isSelected && (
@@ -386,15 +392,15 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                       {selectedClientName}
                     </h4>
                     <p className="text-xs text-bna-anthracite mt-0.5">
-                      {selectedClient?.adresse}
+                      {normalizeTitleCase(selectedClient?.adresse)}
                       {selectedClient?.adresse_complement ? ` (${selectedClient.adresse_complement})` : ""}
                     </p>
                     <p className="text-xs font-semibold text-bna-copper">
-                      {selectedClient?.code_postal} {selectedClient?.ville}
+                      {selectedClient?.code_postal} {normalizeTitleCase(selectedClient?.ville)}
                     </p>
                     {selectedClient?.telephone && (
                       <p className="text-[11px] font-medium text-bna-muted mt-1">
-                        ☎ {selectedClient.telephone}
+                        ☎ {formatPhoneNumber(selectedClient.telephone)}
                       </p>
                     )}
                   </div>
@@ -602,8 +608,7 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span>
-                                {ct.prenom ? ct.prenom + " " : ""}
-                                {ct.nom}
+                                {[normalizeTitleCase(ct.prenom), normalizeTitleCase(ct.nom)].filter(Boolean).join(" ")}
                               </span>
                               {ct.fonction && (
                                 <span className="text-[10px] text-bna-muted">({ct.fonction})</span>
@@ -615,7 +620,7 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                               )}
                             </div>
                             {ct.telephone && (
-                              <p className="text-[10px] text-bna-muted mt-0.5">{ct.telephone}</p>
+                              <p className="text-[10px] text-bna-muted mt-0.5">{formatPhoneNumber(ct.telephone)}</p>
                             )}
                           </div>
                           {contactId === ct.id && <Check className="w-4 h-4" />}
@@ -654,14 +659,14 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                     {selectedClientName}
                   </h4>
                   <p className="text-xs text-bna-anthracite">
-                    {selectedClient?.adresse}
+                    {normalizeTitleCase(selectedClient?.adresse)}
                     {selectedClient?.adresse_complement ? `, ${selectedClient.adresse_complement}` : ""}
                   </p>
                   <p className="text-xs font-semibold text-blue-900">
-                    {selectedClient?.code_postal} {selectedClient?.ville}
+                    {selectedClient?.code_postal} {normalizeTitleCase(selectedClient?.ville)}
                   </p>
                   <div className="text-[11px] text-bna-muted pt-1 flex items-center gap-3">
-                    <span>Tél : {selectedClient?.telephone}</span>
+                    {selectedClient?.telephone && <span>Tél : {formatPhoneNumber(selectedClient.telephone)}</span>}
                     {selectedClient?.email && <span>Email : {selectedClient.email}</span>}
                   </div>
                 </div>
@@ -681,7 +686,9 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <h4 className="font-display font-bold text-sm text-bna-anthracite">{nom}</h4>
+                    <h4 className="font-display font-bold text-sm text-bna-anthracite">
+                      {normalizeTitleCase(nom)}
+                    </h4>
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-white text-bna-copper border border-orange-200">
                       {metier}
                     </span>
@@ -693,11 +700,11 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                       Lieu des travaux (Météo & Terrain) :
                     </span>
                     <p className="text-xs text-bna-anthracite font-semibold">
-                      {adresse}
+                      {normalizeTitleCase(adresse)}
                       {adresseComplement ? `, ${adresseComplement}` : ""}
                     </p>
                     <p className="text-xs font-bold text-bna-copper">
-                      {codePostal} {ville}
+                      {codePostal} {normalizeTitleCase(ville)}
                     </p>
                   </div>
 
@@ -710,10 +717,11 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                     <div className="text-[11px] text-bna-anthracite pt-1 border-t border-orange-200/60">
                       Contact référent :{" "}
                       <span className="font-semibold">
-                        {selectedContact.prenom ? selectedContact.prenom + " " : ""}
-                        {selectedContact.nom}
+                        {[normalizeTitleCase(selectedContact.prenom), normalizeTitleCase(selectedContact.nom)]
+                          .filter(Boolean)
+                          .join(" ")}
                       </span>{" "}
-                      ({selectedContact.telephone || "Sans tél"})
+                      ({formatPhoneNumber(selectedContact.telephone) || "Sans tél"})
                     </div>
                   )}
                 </div>

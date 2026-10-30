@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { MoreVertical, FolderOpen, Trash2, MapPin, User, Phone } from "lucide-react";
 import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
+import { normalizeTitleCase, formatPhoneNumber } from "@/lib/formatters";
 
 interface ChantierCardProps {
   chantier: Chantier;
@@ -88,7 +89,7 @@ export const ChantierCard: React.FC<ChantierCardProps> = ({
 
         {/* Ligne 2 : Nom du Chantier */}
         <h3 className="font-display font-bold text-base text-bna-anthracite leading-snug">
-          {chantier.nom}
+          {normalizeTitleCase(chantier.nom)}
         </h3>
 
         {/* Ligne 3 : Client & Téléphone prioritaire */}
@@ -107,7 +108,7 @@ export const ChantierCard: React.FC<ChantierCardProps> = ({
               className="flex items-center gap-1 text-bna-muted hover:text-bna-copper font-medium"
             >
               <Phone className="w-3 h-3 text-bna-copper shrink-0" />
-              <span>{telephoneAffiche}</span>
+              <span>{formatPhoneNumber(telephoneAffiche)}</span>
             </a>
           )}
         </div>
@@ -118,13 +119,13 @@ export const ChantierCard: React.FC<ChantierCardProps> = ({
           <div className="min-w-0 leading-tight">
             {chantier.adresse && (
               <p className="font-medium text-bna-anthracite truncate">
-                {chantier.adresse}
+                {normalizeTitleCase(chantier.adresse)}
                 {chantier.adresse_complement ? ` (${chantier.adresse_complement})` : ""}
               </p>
             )}
             <p className="text-bna-muted text-[11px] mt-0.5">
               {chantier.code_postal ? `${chantier.code_postal} ` : ""}
-              {chantier.ville}
+              {normalizeTitleCase(chantier.ville)}
             </p>
           </div>
         </div>

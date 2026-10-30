@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getClients } from "@/lib/services/clientService";
 import { NewClientModal } from "./NewClientModal";
 import { ClientDetailModal } from "./ClientDetailModal";
+import { normalizeTitleCase, formatPhoneNumber } from "@/lib/formatters";
 
 interface ClientsScreenProps {
   chantiers: Chantier[];
@@ -175,7 +176,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
             const clientName =
               client.type_client === "professionnel"
                 ? client.societe || client.nom
-                : `${client.prenom ? client.prenom + " " : ""}${client.nom}`;
+                : `${client.prenom ? normalizeTitleCase(client.prenom) + " " : ""}${normalizeTitleCase(client.nom)}`;
 
             // Chantiers rattachés
             const activeChantiersCount = chantiers.filter(
@@ -212,11 +213,11 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
                   <MapPin className="w-3.5 h-3.5 text-bna-copper shrink-0 mt-0.5" />
                   <div className="min-w-0 leading-tight">
                     <p className="font-medium text-bna-anthracite truncate">
-                      {client.adresse}
+                      {normalizeTitleCase(client.adresse)}
                       {client.adresse_complement ? ` (${client.adresse_complement})` : ""}
                     </p>
                     <p className="text-bna-muted text-[11px] mt-0.5">
-                      {client.code_postal} {client.ville}
+                      {client.code_postal} {normalizeTitleCase(client.ville)}
                     </p>
                   </div>
                 </div>
@@ -225,7 +226,7 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
                 <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-xs text-bna-muted pt-1 border-t border-bna-border/40">
                   <span className="flex items-center gap-1 font-semibold text-bna-anthracite">
                     <Phone className="w-3 h-3 text-bna-copper shrink-0" />
-                    <span>{client.telephone}</span>
+                    <span>{formatPhoneNumber(client.telephone)}</span>
                   </span>
 
                   {client.email && (

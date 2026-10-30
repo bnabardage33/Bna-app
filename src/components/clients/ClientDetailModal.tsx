@@ -27,7 +27,7 @@ import {
 } from "@/lib/services/clientService";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { useAuth } from "@/lib/auth/useAuth";
-import { normalizeTitleCase, normalizeEmail } from "@/lib/formatters";
+import { normalizeTitleCase, normalizeEmail, formatPhoneNumber } from "@/lib/formatters";
 
 interface ClientDetailModalProps {
   client: ClientRow | null;
@@ -147,7 +147,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   const clientTitle =
     client.type_client === "professionnel"
       ? client.societe || client.nom
-      : `${client.prenom ? client.prenom + " " : ""}${client.nom}`;
+      : `${client.prenom ? normalizeTitleCase(client.prenom) + " " : ""}${normalizeTitleCase(client.nom)}`;
 
   return (
     <>
@@ -175,7 +175,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                     {client.type_client}
                   </span>
                 </div>
-                <p className="text-[11px] text-bna-muted">{client.ville}</p>
+                <p className="text-[11px] text-bna-muted">{normalizeTitleCase(client.ville)}</p>
               </div>
             </div>
             <button
@@ -208,11 +208,11 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                   href={`tel:${client.telephone}`}
                   className="font-semibold text-bna-anthracite hover:text-bna-copper underline-offset-2 hover:underline"
                 >
-                  {client.telephone}
+                  {formatPhoneNumber(client.telephone)}
                 </a>
                 {client.telephone_secondaire && (
                   <span className="text-bna-muted text-[11px]">
-                    / {client.telephone_secondaire}
+                    / {formatPhoneNumber(client.telephone_secondaire)}
                   </span>
                 )}
               </div>
@@ -244,12 +244,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                   Adresse de Facturation
                 </span>
               </div>
-              <p className="text-xs font-semibold text-bna-anthracite">{client.adresse}</p>
+              <p className="text-xs font-semibold text-bna-anthracite">{normalizeTitleCase(client.adresse)}</p>
               {client.adresse_complement && (
                 <p className="text-xs text-bna-muted">{client.adresse_complement}</p>
               )}
               <p className="text-xs text-bna-anthracite">
-                {client.code_postal} {client.ville}
+                {client.code_postal} {normalizeTitleCase(client.ville)}
               </p>
             </div>
 
@@ -367,8 +367,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-bna-anthracite">
-                            {ct.prenom ? `${ct.prenom} ` : ""}
-                            {ct.nom}
+                            {ct.prenom ? `${normalizeTitleCase(ct.prenom)} ` : ""}
+                            {normalizeTitleCase(ct.nom)}
                           </span>
                           {ct.fonction && (
                             <span className="text-[11px] text-bna-muted">({ct.fonction})</span>
@@ -381,7 +381,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                           )}
                         </div>
                         <div className="flex items-center gap-3 text-[11px] text-bna-muted mt-0.5">
-                          {ct.telephone && <span>{ct.telephone}</span>}
+                          {ct.telephone && <span>{formatPhoneNumber(ct.telephone)}</span>}
                           {ct.email && <span>{ct.email}</span>}
                         </div>
                       </div>
@@ -430,10 +430,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                           <span className="text-[10px] font-bold uppercase text-bna-copper">
                             {ch.metier}
                           </span>
-                          <span className="text-xs font-bold text-bna-anthracite">{ch.nom}</span>
+                          <span className="text-xs font-bold text-bna-anthracite">
+                            {normalizeTitleCase(ch.nom)}
+                          </span>
                         </div>
                         <p className="text-[11px] text-bna-muted mt-0.5">
-                          {ch.ville} {ch.adresse ? `· ${ch.adresse}` : ""}
+                          {normalizeTitleCase(ch.ville)} {ch.adresse ? `· ${normalizeTitleCase(ch.adresse)}` : ""}
                         </p>
                       </div>
                       <span className="text-[11px] font-bold text-bna-copper bg-orange-50 px-2 py-0.5 rounded-lg">

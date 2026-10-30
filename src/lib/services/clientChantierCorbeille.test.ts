@@ -1,4 +1,4 @@
-import { normalizeTitleCase, normalizeEmail } from "../formatters.ts";
+import { normalizeTitleCase, normalizeEmail, formatPhoneNumber } from "../formatters.ts";
 
 export type MetierType = "facade" | "terrasse" | "cloture";
 
@@ -146,13 +146,24 @@ async function runTests() {
   // 0. Tests de normalisation intelligente
   assert(normalizeTitleCase("jean") === "Jean", "Norm: jean -> Jean");
   assert(normalizeTitleCase("dupont") === "Dupont", "Norm: dupont -> Dupont");
+  assert(normalizeTitleCase("jean Dupont") === "Jean Dupont", "Norm: jean Dupont -> Jean Dupont");
   assert(normalizeTitleCase("bordeaux") === "Bordeaux", "Norm: bordeaux -> Bordeaux");
+  assert(normalizeTitleCase("33000 bordeaux") === "33000 Bordeaux", "Norm: 33000 bordeaux -> 33000 Bordeaux");
   assert(normalizeTitleCase("chantier dupont") === "Chantier Dupont", "Norm: chantier dupont -> Chantier Dupont");
+  assert(normalizeTitleCase("rue de la chapelle") === "Rue de la Chapelle", "Norm: rue de la chapelle -> Rue de la Chapelle");
   assert(normalizeTitleCase("saint-andré-de-cubzac") === "Saint-André-de-Cubzac", "Norm: Saint-André-de-Cubzac préservé");
+  assert(normalizeTitleCase("Saint-André-de-Cubzac") === "Saint-André-de-Cubzac", "Norm: Saint-André-de-Cubzac préservé");
   assert(normalizeTitleCase("la teste-de-buch") === "La Teste-de-Buch", "Norm: La Teste-de-Buch préservé");
+  assert(normalizeTitleCase("La Teste-de-Buch") === "La Teste-de-Buch", "Norm: La Teste-de-Buch préservé");
   assert(normalizeTitleCase("jean-pierre") === "Jean-Pierre", "Norm: Jean-Pierre préservé");
   assert(normalizeTitleCase("le haillan") === "Le Haillan", "Norm: Le Haillan préservé");
+  assert(normalizeTitleCase("Le Haillan") === "Le Haillan", "Norm: Le Haillan préservé");
   assert(normalizeEmail(" TEST@Example.Fr ") === "test@example.fr", "Norm: Email en minuscules");
+
+  // Formatage du téléphone
+  assert(formatPhoneNumber("0612345678") === "06 12 34 56 78", "Format phone: 0612345678 -> 06 12 34 56 78");
+  assert(formatPhoneNumber("+33612345678") === "+33 6 12 34 56 78", "Format phone: +33612345678 -> +33 6 12 34 56 78");
+  assert(formatPhoneNumber("0556123456") === "05 56 12 34 56", "Format phone fixe: 0556123456 -> 05 56 12 34 56");
 
   // 1. Indépendance Client (Facturation: Bordeaux) vs Chantier (Intervention: Libourne)
   const clientMock: ClientRow = {

@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { ChantierRow, Database } from "@/types/database.types";
 import { Chantier, MetierType } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
+import { normalizeTitleCase, formatPhoneNumber } from "@/lib/formatters";
 
 export interface CreateChantierInput {
   client_id: string;
@@ -27,18 +28,19 @@ export function rowToChantier(
   contact?: { nom?: string; prenom?: string | null; telephone?: string | null }
 ): Chantier {
   const clientNom = client
-    ? client.societe || `${client.prenom ? client.prenom + " " : ""}${client.nom}`
+    ? client.societe ||
+      `${client.prenom ? normalizeTitleCase(client.prenom) + " " : ""}${normalizeTitleCase(client.nom)}`
     : undefined;
 
   return {
     id: row.id,
     client_id: row.client_id,
     client_nom: clientNom,
-    telephoneClient: client?.telephone || undefined,
-    telephoneContact: contact?.telephone || undefined,
-    nom: row.nom,
-    ville: row.ville || "Gironde",
-    adresse: row.adresse || undefined,
+    telephoneClient: client?.telephone ? formatPhoneNumber(client.telephone) : undefined,
+    telephoneContact: contact?.telephone ? formatPhoneNumber(contact.telephone) : undefined,
+    nom: normalizeTitleCase(row.nom),
+    ville: normalizeTitleCase(row.ville || "Gironde"),
+    adresse: row.adresse ? normalizeTitleCase(row.adresse) : undefined,
     adresse_complement: row.adresse_complement || undefined,
     code_postal: row.code_postal || undefined,
     date_debut_prevue: row.date_debut_prevue || undefined,

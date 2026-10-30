@@ -30,6 +30,7 @@ import {
 import { ClientRow, ContactClientRow } from "@/types/database.types";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { useAuth } from "@/lib/auth/useAuth";
+import { normalizeTitleCase, formatPhoneNumber } from "@/lib/formatters";
 
 interface CorbeilleModalProps {
   isOpen: boolean;
@@ -255,13 +256,16 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-xs text-bna-anthracite">{ch.nom}</h4>
+                            <h4 className="font-bold text-xs text-bna-anthracite">
+                              {normalizeTitleCase(ch.nom)}
+                            </h4>
                             <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-neutral-100 text-bna-copper">
                               {ch.metier}
                             </span>
                           </div>
                           <p className="text-[11px] text-bna-muted">
-                            Lieu : {ch.ville} {ch.adresse ? `· ${ch.adresse}` : ""}
+                            Lieu : {normalizeTitleCase(ch.ville)}{" "}
+                            {ch.adresse ? `· ${normalizeTitleCase(ch.adresse)}` : ""}
                           </p>
                           <p className="text-[10px] text-red-600 mt-0.5">
                             Supprimé le {formatDate(ch.deleted_at)}
@@ -312,8 +316,8 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                 deletedClients.map((cl) => {
                   const clName =
                     cl.type_client === "professionnel"
-                      ? cl.societe || cl.nom
-                      : `${cl.prenom ? cl.prenom + " " : ""}${cl.nom}`;
+                      ? cl.societe || normalizeTitleCase(cl.nom)
+                      : [normalizeTitleCase(cl.prenom), normalizeTitleCase(cl.nom)].filter(Boolean).join(" ");
 
                   return (
                     <div
@@ -337,7 +341,7 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                               </span>
                             </div>
                             <p className="text-[11px] text-bna-muted">
-                              Facturation : {cl.ville} · {cl.telephone}
+                              Facturation : {normalizeTitleCase(cl.ville)} · {formatPhoneNumber(cl.telephone)}
                             </p>
                             <p className="text-[10px] text-red-600 mt-0.5">
                               Supprimé le {formatDate(cl.deleted_at)}
@@ -398,14 +402,13 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                         </div>
                         <div>
                           <h4 className="font-bold text-xs text-bna-anthracite">
-                            {ct.prenom ? ct.prenom + " " : ""}
-                            {ct.nom}
+                            {[normalizeTitleCase(ct.prenom), normalizeTitleCase(ct.nom)].filter(Boolean).join(" ")}
                             {ct.fonction && (
                               <span className="font-normal text-bna-muted"> ({ct.fonction})</span>
                             )}
                           </h4>
                           <p className="text-[11px] text-bna-muted">
-                            {ct.telephone || ct.email || "Sans coordonnées"}
+                            {formatPhoneNumber(ct.telephone) || ct.email || "Sans coordonnées"}
                           </p>
                           <p className="text-[10px] text-red-600 mt-0.5">
                             Supprimé le {formatDate(ct.deleted_at)}
