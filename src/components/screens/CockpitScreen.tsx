@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   ArrowLeft,
   Camera,
@@ -13,22 +13,29 @@ import {
   DollarSign,
   ChevronRight,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  MoreVertical,
+  Trash2,
 } from "lucide-react";
 import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
+import { ConfirmModal } from "@/components/common/ConfirmModal";
 
 interface CockpitScreenProps {
   chantier?: Chantier;
   onBack: () => void;
   onOpenCalepinage: () => void;
+  onSoftDelete?: (chantierId: string) => void;
 }
 
 export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   chantier = MOCK_CHANTIERS.martin,
   onBack,
   onOpenCalepinage,
+  onSoftDelete,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const metierConfig = METIERS_CONFIG[chantier.metier];
 
   return (
@@ -42,10 +49,56 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
           <ArrowLeft className="w-4 h-4" />
           <span>Retour</span>
         </button>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${metierConfig.badgeColor}`}>
-          {metierConfig.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${metierConfig.badgeColor}`}>
+            {metierConfig.label}
+          </span>
+          {onSoftDelete && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="p-1 rounded-lg text-bna-muted hover:text-bna-anthracite hover:bg-neutral-100 transition-colors"
+                aria-label="Actions chantier"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 mt-1 w-44 bg-white rounded-2xl shadow-xl border border-bna-border py-1.5 z-30 animate-in fade-in zoom-in-95 duration-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setConfirmDeleteOpen(true);
+                      }}
+                      className="w-full px-3 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                      <span>Mettre à la corbeille</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmDeleteOpen}
+        title="Mettre ce chantier à la corbeille ?"
+        message="Le chantier ne sera plus visible dans la liste active. Il pourra être restauré depuis la corbeille."
+        confirmLabel="Mettre à la corbeille"
+        cancelLabel="Annuler"
+        isDestructive={true}
+        onConfirm={() => {
+          setConfirmDeleteOpen(false);
+          if (onSoftDelete) onSoftDelete(chantier.id);
+        }}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
 
       {/* Titre & Info Chantier */}
       <div>

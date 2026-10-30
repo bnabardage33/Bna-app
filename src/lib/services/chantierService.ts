@@ -1,16 +1,46 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ChantierRow, ClientRow, Database } from "@/types/database.types";
+import { ChantierRow, Database } from "@/types/database.types";
 import { Chantier, MetierType } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
+
+export interface CreateChantierInput {
+  client_id: string;
+  nom: string;
+  metier: MetierType;
+  description?: string;
+  adresse: string;
+  adresse_complement?: string;
+  code_postal: string;
+  ville: string;
+  date_debut_prevue?: string;
+  date_fin_prevue?: string;
+  contact_id?: string;
+  avancement?: number;
+}
 
 /**
  * Convertit une ligne PostgreSQL ChantierRow en objet Chantier pour l'UI Bna-App
  */
-export function rowToChantier(row: ChantierRow): Chantier {
+export function rowToChantier(
+  row: ChantierRow,
+  client?: { nom?: string; prenom?: string | null; societe?: string | null }
+): Chantier {
+  const clientNom = client
+    ? client.societe || `${client.prenom ? client.prenom + " " : ""}${client.nom}`
+    : undefined;
+
   return {
     id: row.id,
+    client_id: row.client_id,
+    client_nom: clientNom,
     nom: row.nom,
     ville: row.ville || "Gironde",
+    adresse: row.adresse || undefined,
+    adresse_complement: row.adresse_complement || undefined,
+    code_postal: row.code_postal || undefined,
+    date_debut_prevue: row.date_debut_prevue || undefined,
+    date_fin_prevue: row.date_fin_prevue || undefined,
+    contact_id: row.contact_id || undefined,
     metier: row.metier as MetierType,
     intervention: row.description || `Chantier ${row.metier}`,
     avancementGlobal: row.avancement,
@@ -29,93 +59,157 @@ export function rowToChantier(row: ChantierRow): Chantier {
       { nom: `Matériaux principaux ${row.metier}`, statut: "ok", detail: "En stock" },
     ],
     photosRecentesCount: 0,
+    deleted_at: row.deleted_at,
   };
 }
 
 /**
- * Récupère les chantiers : priorité aux données Supabase, avec fallback sur les mocks
+ * Récupère les chantiers : priorité absolue aux données réelles Supabase.
+ * Les données mock ne sont utilisées que si la connexion échoue ou en mode hors-ligne sans compte connecté.
  */
-export async function getChantiers(supabase: SupabaseClient<Database>): Promise<Chantier[]> {
+export async function getChantiers(
+  supabase: SupabaseClient<Database>,
+  options?: { includeDeleted?: boolean; fallbackToMocks?: boolean }
+): Promise<Chantier[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("chantiers")
-      .select("*")
+      .select("*, clients(nom, prenom, societe)")
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      return (data as ChantierRow[]).map(rowToChantier);
+    if (!options?.includeDeleted) {
+      query = query.is("deleted_at", null);
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data !== null) {
+      // Données réelles Supabase trouvées (même si vide [])
+      return data.map((item: any) => rowToChantier(item as ChantierRow, item.clients));
     }
   } catch {
-    // Mode hors-ligne ou session non initialisée
+    // Mode hors-ligne ou erreur de requête
   }
 
-  // Fallback propre sur les 3 chantiers métiers existants
-  return Object.values(MOCK_CHANTIERS);
+  // Fallback sur les mocks uniquement si explicitement autorisé (par défaut désactivé si connecté)
+  if (options?.fallbackToMocks !== false) {
+    return Object.values(MOCK_CHANTIERS);
+  }
+
+  return [];
 }
 
 /**
- * Création d'un client dans Supabase
- */
-export async function createClientRecord(
-  supabase: SupabaseClient<Database>,
-  entrepriseId: string,
-  clientData: {
-    nom: string;
-    prenom?: string;
-    type_client: "particulier" | "professionnel";
-    email?: string;
-    telephone?: string;
-    ville?: string;
-  }
-): Promise<ClientRow> {
-  const { data, error } = await supabase
-    .from("clients")
-    .insert({
-      entreprise_id: entrepriseId,
-      nom: clientData.nom,
-      prenom: clientData.prenom || null,
-      type_client: clientData.type_client,
-      email: clientData.email || null,
-      telephone: clientData.telephone || null,
-      ville: clientData.ville || null,
-    } as any)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data as ClientRow;
-}
-
-/**
- * Création d'un chantier générique dans Supabase
+ * Création d'un chantier complet lié obligatoirement à un client
  */
 export async function createChantierRecord(
   supabase: SupabaseClient<Database>,
   entrepriseId: string,
-  chantierData: {
-    client_id: string;
-    nom: string;
-    metier: MetierType;
-    ville?: string;
-    description?: string;
-    avancement?: number;
-  }
+  input: CreateChantierInput
 ): Promise<ChantierRow> {
-  const { data, error } = await supabase
-    .from("chantiers")
+  const { data, error } = await (supabase.from("chantiers") as any)
     .insert({
       entreprise_id: entrepriseId,
-      client_id: chantierData.client_id,
-      nom: chantierData.nom,
-      metier: chantierData.metier,
-      ville: chantierData.ville || null,
-      description: chantierData.description || null,
-      avancement: chantierData.avancement || 0,
+      client_id: input.client_id,
+      nom: input.nom.trim(),
+      metier: input.metier,
+      description: input.description?.trim() || null,
+      adresse: input.adresse.trim(),
+      adresse_complement: input.adresse_complement?.trim() || null,
+      code_postal: input.code_postal.trim(),
+      ville: input.ville.trim(),
+      date_debut_prevue: input.date_debut_prevue || null,
+      date_fin_prevue: input.date_fin_prevue || null,
+      contact_id: input.contact_id || null,
+      avancement: input.avancement || 0,
       statut: "en_cours",
-    } as any)
+    })
     .select()
     .single();
 
   if (error) throw error;
   return data as ChantierRow;
+}
+
+/**
+ * Mise à jour d'un chantier
+ */
+export async function updateChantierRecord(
+  supabase: SupabaseClient<Database>,
+  chantierId: string,
+  updates: Partial<CreateChantierInput> & { statut?: string; avancement?: number }
+): Promise<ChantierRow> {
+  const { data, error } = await (supabase.from("chantiers") as any)
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chantierId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as ChantierRow;
+}
+
+/**
+ * Mise à la corbeille sécurisée d'un chantier (Soft delete)
+ */
+export async function softDeleteChantier(
+  supabase: SupabaseClient<Database>,
+  chantierId: string,
+  userId?: string
+): Promise<void> {
+  const { error } = await (supabase.from("chantiers") as any)
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: userId || null,
+    })
+    .eq("id", chantierId);
+
+  if (error) throw error;
+}
+
+/**
+ * Restauration d'un chantier depuis la corbeille
+ */
+export async function restoreChantier(
+  supabase: SupabaseClient<Database>,
+  chantierId: string
+): Promise<void> {
+  const { error } = await (supabase.from("chantiers") as any)
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+    })
+    .eq("id", chantierId);
+
+  if (error) throw error;
+}
+
+/**
+ * Suppression définitive d'un chantier (Hard delete - réservé au dirigeant)
+ */
+export async function hardDeleteChantier(
+  supabase: SupabaseClient<Database>,
+  chantierId: string
+): Promise<void> {
+  const { error } = await supabase.from("chantiers").delete().eq("id", chantierId);
+  if (error) throw error;
+}
+
+/**
+ * Récupère les chantiers supprimés pour la corbeille
+ */
+export async function getDeletedChantiers(
+  supabase: SupabaseClient<Database>
+): Promise<Array<ChantierRow & { clients?: { nom: string; prenom?: string | null; societe?: string | null } }>> {
+  const { data, error } = await supabase
+    .from("chantiers")
+    .select("*, clients(nom, prenom, societe)")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+
+  if (error) throw error;
+  return (data as any) || [];
 }

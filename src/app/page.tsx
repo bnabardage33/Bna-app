@@ -14,20 +14,26 @@ import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
+import { ChantierCard } from "@/components/chantiers/ChantierCard";
+import { ClientsScreen } from "@/components/clients/ClientsScreen";
+import { CorbeilleModal } from "@/components/corbeille/CorbeilleModal";
 import { Chantier } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 import { createClient } from "@/lib/supabase/client";
-import { getChantiers } from "@/lib/services/chantierService";
+import { getChantiers, softDeleteChantier } from "@/lib/services/chantierService";
 import { useAuth } from "@/lib/auth/useAuth";
-import { HardHat, FileText, Sparkles, Plus } from "lucide-react";
+import { HardHat, Users, Trash2, FileText, Sparkles, Plus } from "lucide-react";
 
 export default function HomePage() {
   const { user, profil } = useAuth();
   const [currentTab, setCurrentTab] = useState("accueil");
+  const [chantiersSubTab, setChantiersSubTab] = useState<"chantiers" | "clients">("chantiers");
+
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [isCalepinageOpen, setIsCalepinageOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
+  const [isCorbeilleOpen, setIsCorbeilleOpen] = useState(false);
 
   const [chantiers, setChantiers] = useState<Chantier[]>(Object.values(MOCK_CHANTIERS));
   const [activeChantierId, setActiveChantierId] = useState<string>("martin");
@@ -35,13 +41,28 @@ export default function HomePage() {
   const supabase = createClient();
 
   const refreshChantiers = async () => {
-    const list = await getChantiers(supabase);
+    // Si l'utilisateur est authentifié, on ne retombe pas sur les mocks si Supabase renvoie une liste vide
+    const list = await getChantiers(supabase, {
+      fallbackToMocks: !user,
+    });
     setChantiers(list);
+    if (list.length > 0 && !list.find((c) => c.id === activeChantierId)) {
+      setActiveChantierId(list[0].id);
+    }
   };
 
   useEffect(() => {
     refreshChantiers();
   }, [user]);
+
+  const handleSoftDeleteChantier = async (chantierId: string) => {
+    try {
+      await softDeleteChantier(supabase, chantierId, user?.id);
+      await refreshChantiers();
+    } catch (err: any) {
+      alert("Erreur mise à la corbeille : " + err.message);
+    }
+  };
 
   const currentChantier =
     chantiers.find((c) => c.id === activeChantierId) ||
@@ -89,53 +110,120 @@ export default function HomePage() {
         {currentTab === "cockpit" && (
           <CockpitScreen
             chantier={currentChantier}
-            onBack={() => setCurrentTab("accueil")}
+            onBack={() => setCurrentTab("chantiers")}
             onOpenCalepinage={() => setIsCalepinageOpen(true)}
+            onSoftDelete={async (id) => {
+              await handleSoftDeleteChantier(id);
+              setCurrentTab("chantiers");
+            }}
           />
         )}
 
-        {/* ÉCRAN CHANTIERS */}
+        {/* ÉCRAN CHANTIERS & CLIENTS */}
         {currentTab === "chantiers" && (
           <div className="py-6 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <HardHat className="w-6 h-6 text-bna-copper" />
-                <h1 className="font-display font-bold text-2xl">Chantiers</h1>
-              </div>
+            {/* Toggle Chantiers / Clients */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-neutral-100 rounded-2xl mb-4 text-xs font-bold">
               <button
-                onClick={() => setIsNewChantierOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper hover:bg-bna-copper-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-colors active:scale-95"
+                type="button"
+                onClick={() => setChantiersSubTab("chantiers")}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  chantiersSubTab === "chantiers"
+                    ? "bg-white text-bna-copper shadow-xs"
+                    : "text-bna-muted hover:text-bna-anthracite"
+                }`}
               >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>Nouveau</span>
+                <HardHat className="w-4 h-4" />
+                <span>Chantiers ({chantiers.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChantiersSubTab("clients")}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  chantiersSubTab === "clients"
+                    ? "bg-white text-bna-copper shadow-xs"
+                    : "text-bna-muted hover:text-bna-anthracite"
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Clients</span>
               </button>
             </div>
 
-            <div className="space-y-2">
-              {chantiers.map((ch) => (
-                <div
-                  key={ch.id}
-                  onClick={() => {
-                    setActiveChantierId(ch.id);
-                    setCurrentTab("cockpit");
-                  }}
-                  className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs cursor-pointer hover:border-bna-copper/40 transition-all flex items-center justify-between"
-                >
-                  <div>
-                    <span className="text-[10px] font-bold text-bna-muted uppercase block">
-                      {ch.metier} · {ch.ville}
-                    </span>
-                    <h3 className="font-display font-bold text-base text-bna-anthracite mt-0.5">
-                      {ch.nom}
-                    </h3>
-                    <p className="text-xs text-bna-muted mt-0.5">{ch.intervention}</p>
+            {/* VUE SOUS-ONGLET CLIENTS */}
+            {chantiersSubTab === "clients" ? (
+              <ClientsScreen
+                chantiers={chantiers}
+                onOpenCorbeille={() => setIsCorbeilleOpen(true)}
+                onOpenChantier={(id) => {
+                  setActiveChantierId(id);
+                  setCurrentTab("cockpit");
+                }}
+              />
+            ) : (
+              /* VUE SOUS-ONGLET CHANTIERS */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HardHat className="w-6 h-6 text-bna-copper" />
+                    <div>
+                      <h1 className="font-display font-bold text-2xl">Chantiers</h1>
+                      <p className="text-[11px] text-bna-muted">
+                        {chantiers.length} chantier{chantiers.length > 1 ? "s" : ""} actif{chantiers.length > 1 ? "s" : ""}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-bna-copper bg-bna-copper-light/60 px-2.5 py-1 rounded-xl">
-                    {ch.avancementGlobal}%
-                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsCorbeilleOpen(true)}
+                      className="p-2 border border-bna-border bg-white hover:bg-neutral-50 text-bna-muted hover:text-bna-anthracite rounded-xl transition-colors"
+                      title="Ouvrir la corbeille"
+                      aria-label="Corbeille"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setIsNewChantierOpen(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper hover:bg-bna-copper-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-colors active:scale-95"
+                    >
+                      <Plus className="w-4 h-4 stroke-[2.5]" />
+                      <span>Nouveau</span>
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
+
+                {chantiers.length === 0 ? (
+                  <div className="bg-white border border-bna-border rounded-2xl p-6 text-center shadow-xs">
+                    <p className="text-sm font-semibold text-bna-anthracite">Aucun chantier actif</p>
+                    <p className="text-xs text-bna-muted mt-1">
+                      Créez un chantier en sélectionnant un client existant.
+                    </p>
+                    <button
+                      onClick={() => setIsNewChantierOpen(true)}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper text-white text-xs font-semibold rounded-xl"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Nouveau chantier</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {chantiers.map((ch) => (
+                      <ChantierCard
+                        key={ch.id}
+                        chantier={ch}
+                        onOpen={(id) => {
+                          setActiveChantierId(id);
+                          setCurrentTab("cockpit");
+                        }}
+                        onSoftDelete={handleSoftDeleteChantier}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -196,11 +284,18 @@ export default function HomePage() {
         onClose={() => setIsAuthOpen(false)}
       />
 
-      {/* Modal Nouveau Chantier Supabase */}
+      {/* Modal Nouveau Chantier Supabase (Tunnel 4 étapes) */}
       <NewChantierModal
         isOpen={isNewChantierOpen}
         onClose={() => setIsNewChantierOpen(false)}
         onChantierCreated={refreshChantiers}
+      />
+
+      {/* Modal Corbeille Sécurisée */}
+      <CorbeilleModal
+        isOpen={isCorbeilleOpen}
+        onClose={() => setIsCorbeilleOpen(false)}
+        onRestored={refreshChantiers}
       />
     </div>
   );

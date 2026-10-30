@@ -39,12 +39,34 @@ export interface ClientRow {
   nom: string;
   prenom: string | null;
   societe: string | null;
+  nom_commercial: string | null;
+  siret: string | null;
   email: string | null;
   telephone: string | null;
+  telephone_secondaire: string | null;
   adresse: string | null;
+  adresse_complement: string | null;
   code_postal: string | null;
   ville: string | null;
   notes: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactClientRow {
+  id: string;
+  entreprise_id: string;
+  client_id: string;
+  nom: string;
+  prenom: string | null;
+  fonction: string | null;
+  telephone: string | null;
+  email: string | null;
+  est_principal: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -53,16 +75,20 @@ export interface ChantierRow {
   id: string;
   entreprise_id: string;
   client_id: string;
+  contact_id: string | null;
   nom: string;
   metier: MetierType;
   statut: StatutChantier;
   description: string | null;
   adresse: string | null;
+  adresse_complement: string | null;
   code_postal: string | null;
   ville: string | null;
   date_debut_prevue: string | null;
   date_fin_prevue: string | null;
   avancement: number;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -146,6 +172,15 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<ClientRow, "id">>;
+      };
+      contacts_clients: {
+        Row: ContactClientRow;
+        Insert: Omit<ContactClientRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<ContactClientRow, "id">>;
       };
       chantiers: {
         Row: ChantierRow;

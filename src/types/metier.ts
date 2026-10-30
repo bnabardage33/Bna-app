@@ -53,8 +53,16 @@ export interface AvancementDetail {
 
 export interface Chantier {
   id: string;
+  client_id?: string;
+  client_nom?: string;
   nom: string;
   ville: string;
+  adresse?: string;
+  adresse_complement?: string;
+  code_postal?: string;
+  date_debut_prevue?: string;
+  date_fin_prevue?: string;
+  contact_id?: string;
   metier: MetierType;
   intervention: string;
   avancementGlobal: number;
@@ -73,4 +81,5 @@ export interface Chantier {
     detail: string;
   };
   photosRecentesCount: number;
+  deleted_at?: string | null;
 }
