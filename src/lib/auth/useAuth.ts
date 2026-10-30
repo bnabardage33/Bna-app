@@ -1,86 +1,158 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Session, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { EntrepriseRow, ProfilRow } from "@/types/database.types";
+import type { EntrepriseRow, ProfilRow } from "@/types/database.types";
 
 export function useAuth() {
+  const supabase = useMemo(() => createClient(), []);
+
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profil, setProfil] = useState<ProfilRow | null>(null);
   const [entreprise, setEntreprise] = useState<EntrepriseRow | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const supabase = createClient();
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          // Charger le profil
-          const { data: profilData } = await supabase
-            .from("profils")
-            .select("*")
-            .eq("id", session.user.id)
-            .maybeSingle();
-
-          if (profilData) {
-            setProfil(profilData as ProfilRow);
-
-            // Charger l'entreprise
-            const { data: entData } = await supabase
-              .from("entreprises")
-              .select("*")
-              .eq("id", (profilData as ProfilRow).entreprise_id)
-              .maybeSingle();
-
-            if (entData) {
-              setEntreprise(entData as EntrepriseRow);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("Auth initialization note:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (!session?.user) {
-          setProfil(null);
-          setEntreprise(null);
-        }
-      }
-    );
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-
-  const signIn = async (email: string, password: string) => {
-    const res = await supabase.auth.signInWithPassword({ email, password });
-    if (res.error) throw res.error;
-    return res.data;
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const clearAuthData = useCallback(() => {
     setUser(null);
     setSession(null);
     setProfil(null);
     setEntreprise(null);
+  }, []);
+
+  const loadProfile = useCallback(
+    async (currentUser: User | null) => {
+      if (!currentUser) {
+        setProfil(null);
+        setEntreprise(null);
+        return;
+      }
+
+      const { data: profilData, error: profilError } = await supabase
+        .from("profils")
+        .select("*")
+        .eq("id", currentUser.id)
+        .maybeSingle();
+
+      if (profilError) {
+        console.error("Erreur chargement profil :", profilError);
+        setProfil(null);
+        setEntreprise(null);
+        return;
+      }
+
+      if (!profilData) {
+        console.warn("Aucun profil trouvé pour l’utilisateur connecté.");
+        setProfil(null);
+        setEntreprise(null);
+        return;
+      }
+
+      const currentProfil = profilData as ProfilRow;
+      setProfil(currentProfil);
+
+      const { data: entrepriseData, error: entrepriseError } = await supabase
+        .from("entreprises")
+        .select("*")
+        .eq("id", currentProfil.entreprise_id)
+        .maybeSingle();
+
+      if (entrepriseError) {
+        console.error("Erreur chargement entreprise :", entrepriseError);
+        setEntreprise(null);
+        return;
+      }
+
+      setEntreprise(
+        entrepriseData ? (entrepriseData as EntrepriseRow) : null
+      );
+    },
+    [supabase]
+  );
+
+  const applySession = useCallback(
+    async (currentSession: Session | null) => {
+      setSession(currentSession);
+
+      const currentUser = currentSession?.user ?? null;
+      setUser(currentUser);
+
+      await loadProfile(currentUser);
+    },
+    [loadProfile]
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    async function initializeAuth() {
+      try {
+        const {
+          data: { session: initialSession },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          throw error;
+        }
+
+        if (active) {
+          await applySession(initialSession);
+        }
+      } catch (error) {
+        console.error("Erreur initialisation Auth :", error);
+
+        if (active) {
+          clearAuthData();
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void initializeAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      void applySession(newSession).finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [applySession, clearAuthData, supabase]);
+
+  const signIn = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    await applySession(data.session);
+
+    return data;
+  };
+
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      throw error;
+    }
+
+    clearAuthData();
   };
 
   return {
@@ -91,6 +163,6 @@ export function useAuth() {
     loading,
     signIn,
     signOut,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user),
   };
 }
