@@ -6,6 +6,7 @@ import { TypeClient, ClientRow } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
 import { createClientRecord, createContactRecord } from "@/lib/services/clientService";
 import { useAuth } from "@/lib/auth/useAuth";
+import { normalizeTitleCase, normalizeEmail } from "@/lib/formatters";
 
 interface NewClientModalProps {
   isOpen: boolean;
@@ -93,32 +94,37 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
     const supabase = createClient();
 
     try {
+      const normalizedPrenom = prenom.trim() ? normalizeTitleCase(prenom) : null;
+      const normalizedNom = nom.trim() ? normalizeTitleCase(nom) : "";
+      const normalizedVille = normalizeTitleCase(ville);
+      const normalizedEmail = email.trim() ? normalizeEmail(email) : null;
+
       // 1. Création du client
       const client = await createClientRecord(supabase, entreprise.id, {
         type_client: typeClient,
-        nom: typeClient === "particulier" ? nom.trim() : societe.trim(),
-        prenom: typeClient === "particulier" ? prenom.trim() : null,
+        nom: typeClient === "particulier" ? normalizedNom : societe.trim(),
+        prenom: typeClient === "particulier" ? normalizedPrenom : null,
         societe: typeClient === "professionnel" ? societe.trim() : null,
         nom_commercial: typeClient === "professionnel" && nomCommercial ? nomCommercial.trim() : null,
         siret: typeClient === "professionnel" && siret ? siret.trim() : null,
         telephone: telephone.trim(),
         telephone_secondaire: telephoneSecondaire.trim() || null,
-        email: email.trim() || null,
+        email: normalizedEmail,
         adresse: adresse.trim(),
         adresse_complement: adresseComplement.trim() || null,
         code_postal: codePostal.trim(),
-        ville: ville.trim(),
+        ville: normalizedVille,
         notes: notes.trim() || null,
       });
 
       // 2. Création éventuelle du contact initial
       if (addInitialContact && contactNom.trim()) {
         await createContactRecord(supabase, entreprise.id, client.id, {
-          nom: contactNom.trim(),
-          prenom: contactPrenom.trim() || null,
+          nom: normalizeTitleCase(contactNom),
+          prenom: contactPrenom.trim() ? normalizeTitleCase(contactPrenom) : null,
           fonction: contactFonction.trim() || null,
           telephone: contactTel.trim() || null,
-          email: contactEmail.trim() || null,
+          email: contactEmail.trim() ? normalizeEmail(contactEmail) : null,
           est_principal: true,
         });
       }
@@ -216,6 +222,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     placeholder="Jean"
                     value={prenom}
                     onChange={(e) => setPrenom(e.target.value)}
+                    onBlur={() => setPrenom(normalizeTitleCase(prenom))}
                     className="w-full px-3.5 py-2.5 bg-bna-offwhite/50 border border-bna-border rounded-xl text-sm font-medium focus:outline-hidden focus:border-bna-copper focus:bg-white"
                   />
                 </div>
@@ -229,6 +236,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     placeholder="Dupont"
                     value={nom}
                     onChange={(e) => setNom(e.target.value)}
+                    onBlur={() => setNom(normalizeTitleCase(nom))}
                     className="w-full px-3.5 py-2.5 bg-bna-offwhite/50 border border-bna-border rounded-xl text-sm font-medium focus:outline-hidden focus:border-bna-copper focus:bg-white"
                   />
                 </div>
@@ -326,6 +334,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                   placeholder="contact@exemple.fr"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setEmail(normalizeEmail(email))}
                   className="w-full pl-9 pr-3 py-2.5 bg-bna-offwhite/50 border border-bna-border rounded-xl text-sm font-medium focus:outline-hidden focus:border-bna-copper focus:bg-white"
                 />
               </div>
@@ -380,6 +389,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                   placeholder="Ville *"
                   value={ville}
                   onChange={(e) => setVille(e.target.value)}
+                  onBlur={() => setVille(normalizeTitleCase(ville))}
                   className="w-full px-3.5 py-2.5 bg-bna-offwhite/50 border border-bna-border rounded-xl text-sm font-medium focus:outline-hidden focus:border-bna-copper focus:bg-white"
                 />
               </div>
@@ -411,6 +421,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     placeholder="Prénom"
                     value={contactPrenom}
                     onChange={(e) => setContactPrenom(e.target.value)}
+                    onBlur={() => setContactPrenom(normalizeTitleCase(contactPrenom))}
                     className="w-full px-3 py-2 bg-white border border-bna-border rounded-lg text-xs"
                   />
                   <input
@@ -418,6 +429,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     placeholder="Nom *"
                     value={contactNom}
                     onChange={(e) => setContactNom(e.target.value)}
+                    onBlur={() => setContactNom(normalizeTitleCase(contactNom))}
                     className="w-full px-3 py-2 bg-white border border-bna-border rounded-lg text-xs"
                   />
                 </div>
@@ -441,6 +453,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     placeholder="Email contact"
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
+                    onBlur={() => setContactEmail(normalizeEmail(contactEmail))}
                     className="w-full px-3 py-2 bg-white border border-bna-border rounded-lg text-xs"
                   />
                 </div>

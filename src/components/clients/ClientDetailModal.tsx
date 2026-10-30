@@ -27,6 +27,7 @@ import {
 } from "@/lib/services/clientService";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { useAuth } from "@/lib/auth/useAuth";
+import { normalizeTitleCase, normalizeEmail } from "@/lib/formatters";
 
 interface ClientDetailModalProps {
   client: ClientRow | null;
@@ -99,11 +100,11 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
     try {
       await createContactRecord(supabase, entreprise.id, client.id, {
-        nom: newContactNom.trim(),
-        prenom: newContactPrenom.trim() || undefined,
+        nom: normalizeTitleCase(newContactNom),
+        prenom: newContactPrenom.trim() ? normalizeTitleCase(newContactPrenom) : undefined,
         fonction: newContactFonction.trim() || undefined,
         telephone: newContactTel.trim() || undefined,
-        email: newContactEmail.trim() || undefined,
+        email: newContactEmail.trim() ? normalizeEmail(newContactEmail) : undefined,
         est_principal: newContactPrincipal,
       });
 
@@ -285,6 +286,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                       placeholder="Prénom"
                       value={newContactPrenom}
                       onChange={(e) => setNewContactPrenom(e.target.value)}
+                      onBlur={() => setNewContactPrenom(normalizeTitleCase(newContactPrenom))}
                       className="w-full px-3 py-1.5 bg-white border border-bna-border rounded-lg text-xs"
                     />
                     <input
@@ -293,6 +295,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                       placeholder="Nom *"
                       value={newContactNom}
                       onChange={(e) => setNewContactNom(e.target.value)}
+                      onBlur={() => setNewContactNom(normalizeTitleCase(newContactNom))}
                       className="w-full px-3 py-1.5 bg-white border border-bna-border rounded-lg text-xs"
                     />
                   </div>
@@ -316,6 +319,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                       placeholder="Email"
                       value={newContactEmail}
                       onChange={(e) => setNewContactEmail(e.target.value)}
+                      onBlur={() => setNewContactEmail(normalizeEmail(newContactEmail))}
                       className="w-full px-3 py-1.5 bg-white border border-bna-border rounded-lg text-xs"
                     />
                   </div>

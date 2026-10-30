@@ -8,6 +8,7 @@ import {
   Building2,
   User,
   Phone,
+  Mail,
   MapPin,
   HardHat,
   Trash2,
@@ -185,45 +186,69 @@ export const ClientsScreen: React.FC<ClientsScreenProps> = ({
               <div
                 key={client.id}
                 onClick={() => setSelectedClient(client)}
-                className="bg-white border border-bna-border rounded-2xl p-3.5 shadow-xs cursor-pointer hover:border-bna-copper/40 transition-all flex items-center justify-between"
+                className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs cursor-pointer hover:border-bna-copper/40 transition-all space-y-2.5"
               >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="p-2.5 rounded-xl bg-bna-offwhite text-bna-copper shrink-0 mt-0.5">
-                    {client.type_client === "professionnel" ? (
-                      <Building2 className="w-4 h-4" />
-                    ) : (
-                      <User className="w-4 h-4" />
-                    )}
+                {/* Ligne 1 : Nom/Société + Badge Type */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1.5 rounded-lg bg-bna-offwhite text-bna-copper shrink-0">
+                      {client.type_client === "professionnel" ? (
+                        <Building2 className="w-3.5 h-3.5" />
+                      ) : (
+                        <User className="w-3.5 h-3.5" />
+                      )}
+                    </div>
+                    <h3 className="font-display font-bold text-sm text-bna-anthracite truncate">
+                      {clientName}
+                    </h3>
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-display font-bold text-sm text-bna-anthracite truncate">
-                        {clientName}
-                      </h3>
-                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-neutral-100 text-bna-muted shrink-0">
-                        {client.type_client === "professionnel" ? "Pro" : "Particulier"}
-                      </span>
-                    </div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-neutral-100 text-bna-muted shrink-0">
+                    {client.type_client === "professionnel" ? "Professionnel" : "Particulier"}
+                  </span>
+                </div>
 
-                    <div className="flex items-center gap-3 text-xs text-bna-muted mt-1">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-bna-copper" />
-                        {client.ville}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3 h-3 text-bna-copper" />
-                        {client.telephone}
-                      </span>
-                    </div>
+                {/* Ligne 2 : Adresse de facturation complète */}
+                <div className="flex items-start gap-1.5 text-xs text-bna-anthracite pl-0.5">
+                  <MapPin className="w-3.5 h-3.5 text-bna-copper shrink-0 mt-0.5" />
+                  <div className="min-w-0 leading-tight">
+                    <p className="font-medium text-bna-anthracite truncate">
+                      {client.adresse}
+                      {client.adresse_complement ? ` (${client.adresse_complement})` : ""}
+                    </p>
+                    <p className="text-bna-muted text-[11px] mt-0.5">
+                      {client.code_postal} {client.ville}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1 text-[11px] font-bold text-bna-anthracite bg-bna-offwhite px-2 py-1 rounded-lg border border-bna-border/50">
-                    <HardHat className="w-3.5 h-3.5 text-bna-copper" />
-                    <span>{activeChantiersCount}</span>
+                {/* Ligne 3 : Coordonnées (Téléphone & Email si présent) */}
+                <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-xs text-bna-muted pt-1 border-t border-bna-border/40">
+                  <span className="flex items-center gap-1 font-semibold text-bna-anthracite">
+                    <Phone className="w-3 h-3 text-bna-copper shrink-0" />
+                    <span>{client.telephone}</span>
+                  </span>
+
+                  {client.email && (
+                    <span className="flex items-center gap-1 truncate text-bna-muted max-w-[200px]">
+                      <Mail className="w-3 h-3 text-bna-copper shrink-0" />
+                      <span className="truncate">{client.email}</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Ligne 4 : Compteur chantiers + action ouvrir */}
+                <div className="flex items-center justify-between pt-1 border-t border-bna-border/40 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-bna-copper">
+                    <HardHat className="w-3.5 h-3.5" />
+                    <span>
+                      {activeChantiersCount} chantier{activeChantiersCount > 1 ? "s" : ""}
+                    </span>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-bna-muted" />
+
+                  <div className="flex items-center gap-1 text-[11px] font-semibold text-bna-muted">
+                    <span>Voir fiche</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
                 </div>
               </div>
             );

@@ -63,6 +63,8 @@ export interface Chantier {
   date_debut_prevue?: string;
   date_fin_prevue?: string;
   contact_id?: string;
+  telephoneContact?: string;
+  telephoneClient?: string;
   metier: MetierType;
   intervention: string;
   avancementGlobal: number;

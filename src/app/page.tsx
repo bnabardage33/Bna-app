@@ -122,20 +122,8 @@ export default function HomePage() {
         {/* ÉCRAN CHANTIERS & CLIENTS */}
         {currentTab === "chantiers" && (
           <div className="py-6 animate-in fade-in duration-150">
-            {/* Toggle Chantiers / Clients */}
+            {/* Toggle Clients / Chantiers */}
             <div className="grid grid-cols-2 gap-1 p-1 bg-neutral-100 rounded-2xl mb-4 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setChantiersSubTab("chantiers")}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
-                  chantiersSubTab === "chantiers"
-                    ? "bg-white text-bna-copper shadow-xs"
-                    : "text-bna-muted hover:text-bna-anthracite"
-                }`}
-              >
-                <HardHat className="w-4 h-4" />
-                <span>Chantiers ({chantiers.length})</span>
-              </button>
               <button
                 type="button"
                 onClick={() => setChantiersSubTab("clients")}
@@ -147,6 +135,18 @@ export default function HomePage() {
               >
                 <Users className="w-4 h-4" />
                 <span>Clients</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChantiersSubTab("chantiers")}
+                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
+                  chantiersSubTab === "chantiers"
+                    ? "bg-white text-bna-copper shadow-xs"
+                    : "text-bna-muted hover:text-bna-anthracite"
+                }`}
+              >
+                <HardHat className="w-4 h-4" />
+                <span>Chantiers ({chantiers.length})</span>
               </button>
             </div>
 

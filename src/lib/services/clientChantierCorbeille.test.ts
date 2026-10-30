@@ -1,3 +1,5 @@
+import { normalizeTitleCase, normalizeEmail } from "../formatters.ts";
+
 export type MetierType = "facade" | "terrasse" | "cloture";
 
 export interface ClientRow {
@@ -63,7 +65,8 @@ export interface ChantierRow {
 
 function rowToChantier(
   row: ChantierRow,
-  client?: { nom?: string; prenom?: string | null; societe?: string | null }
+  client?: { nom?: string; prenom?: string | null; societe?: string | null; telephone?: string | null },
+  contact?: { nom?: string; prenom?: string | null; telephone?: string | null }
 ) {
   const clientNom = client
     ? client.societe || `${client.prenom ? client.prenom + " " : ""}${client.nom}`
@@ -73,6 +76,8 @@ function rowToChantier(
     id: row.id,
     client_id: row.client_id,
     client_nom: clientNom,
+    telephoneClient: client?.telephone || undefined,
+    telephoneContact: contact?.telephone || undefined,
     nom: row.nom,
     ville: row.ville || "Gironde",
     adresse: row.adresse || undefined,
@@ -136,25 +141,36 @@ function simulateHardDeleteClient(
 }
 
 async function runTests() {
-  console.log("=== TESTS MÉTIER : CLIENT ≠ CHANTIER & CONTRÔLES SÉCURISÉS ===");
+  console.log("=== TESTS MÉTIER : CLIENT ≠ CHANTIER & FINITIONS UX ===");
+
+  // 0. Tests de normalisation intelligente
+  assert(normalizeTitleCase("jean") === "Jean", "Norm: jean -> Jean");
+  assert(normalizeTitleCase("dupont") === "Dupont", "Norm: dupont -> Dupont");
+  assert(normalizeTitleCase("bordeaux") === "Bordeaux", "Norm: bordeaux -> Bordeaux");
+  assert(normalizeTitleCase("chantier dupont") === "Chantier Dupont", "Norm: chantier dupont -> Chantier Dupont");
+  assert(normalizeTitleCase("saint-andré-de-cubzac") === "Saint-André-de-Cubzac", "Norm: Saint-André-de-Cubzac préservé");
+  assert(normalizeTitleCase("la teste-de-buch") === "La Teste-de-Buch", "Norm: La Teste-de-Buch préservé");
+  assert(normalizeTitleCase("jean-pierre") === "Jean-Pierre", "Norm: Jean-Pierre préservé");
+  assert(normalizeTitleCase("le haillan") === "Le Haillan", "Norm: Le Haillan préservé");
+  assert(normalizeEmail(" TEST@Example.Fr ") === "test@example.fr", "Norm: Email en minuscules");
 
   // 1. Indépendance Client (Facturation: Bordeaux) vs Chantier (Intervention: Libourne)
   const clientMock: ClientRow = {
     id: "client-uuid-1",
     entreprise_id: "ent-uuid-1",
     type_client: "particulier",
-    nom: "Test",
-    prenom: "Jean",
+    nom: normalizeTitleCase("test"),
+    prenom: normalizeTitleCase("jean"),
     societe: null,
     nom_commercial: null,
     siret: null,
-    telephone: "0600000001",
+    telephone: "06 12 34 56 78",
     telephone_secondaire: null,
-    email: "jean.test@bna.fr",
+    email: normalizeEmail("jean.test@example.fr"),
     adresse: "10 rue Exemple",
     adresse_complement: null,
     code_postal: "33000",
-    ville: "Bordeaux",
+    ville: normalizeTitleCase("bordeaux"),
     notes: "Client test facturation Bordeaux",
     deleted_at: null,
     deleted_by: null,
@@ -167,14 +183,14 @@ async function runTests() {
     entreprise_id: "ent-uuid-1",
     client_id: clientMock.id,
     contact_id: null,
-    nom: "Terrasse Test Libourne",
+    nom: normalizeTitleCase("terrasse test libourne"),
     metier: "terrasse",
     statut: "en_cours",
     description: "Pose terrasse composite sur plots",
     adresse: "20 rue Chantier",
     adresse_complement: null,
     code_postal: "33500",
-    ville: "Libourne",
+    ville: normalizeTitleCase("libourne"),
     date_debut_prevue: "2026-11-01",
     date_fin_prevue: "2026-11-05",
     avancement: 0,
@@ -189,9 +205,14 @@ async function runTests() {
   assert(clientMock.ville === "Bordeaux", "T2: Facturation client = Bordeaux");
   assert(chantierMock.ville === "Libourne", "T2: Intervention chantier = Libourne");
 
-  const chantierObj = rowToChantier(chantierMock, { nom: clientMock.nom, prenom: clientMock.prenom });
+  const chantierObj = rowToChantier(
+    chantierMock,
+    { nom: clientMock.nom, prenom: clientMock.prenom, telephone: clientMock.telephone },
+    undefined
+  );
   assert(chantierObj.ville === "Libourne", "T3: Chantier localisé à Libourne (météo & terrain)");
   assert(chantierObj.client_nom === "Jean Test", "T3: Nom client affiché correctement");
+  assert(chantierObj.telephoneClient === "06 12 34 56 78", "T3: Téléphone client disponible sur la carte chantier");
 
   // 2. Contrôle session active & deleted_by
   const activeUser = { id: "user-auth-uuid-42" };
@@ -211,10 +232,11 @@ async function runTests() {
   assert(chantierMock.deleted_at !== null, "T5: Chantier placé dans la corbeille (deleted_at présent)");
   assert(chantierMock.deleted_by === activeUser.id, "T5: deleted_by correspond obligatoirement à l'utilisateur connecté");
 
-  // Restauration : deleted_at et deleted_by remis à null
+  // Restauration : deleted_at et deleted_by remis à null, relation client_id inchangée
   simulateRestore(chantierMock);
   assert(chantierMock.deleted_at === null, "T6: Restauration remet deleted_at à null");
   assert(chantierMock.deleted_by === null, "T6: Restauration remet deleted_by à null");
+  assert(chantierMock.client_id === clientMock.id, "T6: Relation client_id strictement inchangée après restauration");
 
   // 3. Suppression définitive d'un client : contrôles stricts
   const clientsDB = [{ ...clientMock }];
@@ -250,15 +272,13 @@ async function runTests() {
   assert(blockedWithCorbeille, "T8: Client avec chantier dans la corbeille toujours protégé contre la suppression");
 
   // Scénario C : Suppression définitive possible seulement APRÈS suppression définitive du chantier
-  // Suppression définitive du chantier d'abord :
   chantiersDB.splice(0, 1);
   assert(chantiersDB.length === 0, "T9: Chantier définitivement purgé");
 
-  // Suppression du client désormais possible :
   simulateHardDeleteClient(clientMock.id, chantiersDB, contactsDB, clientsDB);
   assert(clientsDB.length === 0, "T9: Client supprimé définitivement avec succès après purge des chantiers");
 
-  console.log("\nTous les tests de contrôles stricts (deleted_by, session, suppression définitive sécurisée) sont validés avec succès !");
+  console.log("\nTous les tests de validation (Client Bordeaux/Chantier Libourne, Corbeille, Restauration, Normalisation) sont validés avec succès !");
 }
 
 runTests().catch((err) => {

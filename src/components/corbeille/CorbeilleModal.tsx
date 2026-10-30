@@ -280,22 +280,22 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                         <span>Restaurer</span>
                       </button>
 
-                      {isDirigeant && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setItemToHardDelete({
-                              id: ch.id,
-                              type: "chantier",
-                              name: ch.nom,
-                            })
-                          }
-                          className="px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 text-xs font-semibold"
-                          title="Suppression définitive"
-                        >
-                          Définitif
-                        </button>
-                      )}
+                        {isDirigeant && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setItemToHardDelete({
+                                id: ch.id,
+                                type: "chantier",
+                                name: ch.nom,
+                              })
+                            }
+                            className="px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 text-xs font-semibold"
+                            title="Suppression définitive"
+                          >
+                            Supprimer définitivement
+                          </button>
+                        )}
                     </div>
                   </div>
                 ))
@@ -369,7 +369,7 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                             className="px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 text-xs font-semibold"
                             title="Suppression définitive"
                           >
-                            Définitif
+                            Supprimer définitivement
                           </button>
                         )}
                       </div>
@@ -437,7 +437,7 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
                           className="px-2.5 py-1.5 rounded-xl text-red-600 hover:bg-red-50 text-xs font-semibold"
                           title="Suppression définitive"
                         >
-                          Définitif
+                          Supprimer définitivement
                         </button>
                       )}
                     </div>

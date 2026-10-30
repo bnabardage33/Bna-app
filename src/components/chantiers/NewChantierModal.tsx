@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   MapPin,
+  Phone,
   Calendar,
   ArrowRight,
   ArrowLeft,
@@ -24,6 +25,7 @@ import { getClients, getContactsByClient } from "@/lib/services/clientService";
 import { createChantierRecord } from "@/lib/services/chantierService";
 import { useAuth } from "@/lib/auth/useAuth";
 import { NewClientModal } from "@/components/clients/NewClientModal";
+import { normalizeTitleCase } from "@/lib/formatters";
 
 interface NewChantierModalProps {
   isOpen: boolean;
@@ -159,15 +161,18 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
     setErrorMessage(null);
 
     try {
+      const normalizedNom = normalizeTitleCase(nom);
+      const normalizedVille = normalizeTitleCase(ville);
+
       await createChantierRecord(supabase, entreprise.id, {
         client_id: selectedClient.id,
-        nom: nom.trim(),
+        nom: normalizedNom,
         metier,
         description: description.trim() || undefined,
         adresse: adresse.trim(),
         adresse_complement: adresseComplement.trim() || undefined,
         code_postal: codePostal.trim(),
-        ville: ville.trim(),
+        ville: normalizedVille,
         date_debut_prevue: dateDebutPrevue || undefined,
         date_fin_prevue: dateFinPrevue || undefined,
         contact_id: contactId || undefined,
@@ -337,12 +342,19 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                                 <h4 className="font-bold text-xs text-bna-anthracite truncate">
                                   {cName}
                                 </h4>
-                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-neutral-100 text-bna-muted">
+                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-neutral-100 text-bna-muted shrink-0">
                                   {client.type_client === "professionnel" ? "Pro" : "Particulier"}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-bna-muted mt-0.5">
-                                Facturation : {client.ville} · {client.telephone}
+                              <p className="text-[11px] text-bna-anthracite font-medium mt-1 truncate">
+                                📍 {client.adresse}
+                                {client.adresse_complement ? ` (${client.adresse_complement})` : ""}
+                              </p>
+                              <p className="text-[11px] text-bna-muted">
+                                {client.code_postal} {client.ville}
+                              </p>
+                              <p className="text-[11px] font-semibold text-bna-anthracite mt-0.5">
+                                ☎ {client.telephone}
                               </p>
                             </div>
                           </div>
@@ -365,21 +377,31 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
             {step === 2 && (
               <div className="space-y-3.5">
                 {/* Client sélectionné résumé */}
-                <div className="p-2.5 bg-orange-50/60 border border-bna-copper/30 rounded-xl flex items-center justify-between text-xs">
-                  <div>
+                <div className="p-3 bg-orange-50/60 border border-bna-copper/30 rounded-2xl flex items-start justify-between text-xs gap-2">
+                  <div className="min-w-0">
                     <span className="text-[10px] font-bold text-bna-copper uppercase block">
                       Client rattaché
                     </span>
-                    <span className="font-bold text-bna-anthracite">{selectedClientName}</span>
-                    <span className="text-bna-muted text-[11px]">
-                      {" "}
-                      (Facturation : {selectedClient?.ville})
-                    </span>
+                    <h4 className="font-bold text-sm text-bna-anthracite truncate">
+                      {selectedClientName}
+                    </h4>
+                    <p className="text-xs text-bna-anthracite mt-0.5">
+                      {selectedClient?.adresse}
+                      {selectedClient?.adresse_complement ? ` (${selectedClient.adresse_complement})` : ""}
+                    </p>
+                    <p className="text-xs font-semibold text-bna-copper">
+                      {selectedClient?.code_postal} {selectedClient?.ville}
+                    </p>
+                    {selectedClient?.telephone && (
+                      <p className="text-[11px] font-medium text-bna-muted mt-1">
+                        ☎ {selectedClient.telephone}
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="text-[11px] font-bold text-bna-copper underline hover:text-bna-copper-hover"
+                    className="text-[11px] font-bold text-bna-copper underline hover:text-bna-copper-hover shrink-0 pt-0.5"
                   >
                     Changer
                   </button>
@@ -419,6 +441,7 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                     placeholder="ex. Terrasse composite sur plots"
                     value={nom}
                     onChange={(e) => setNom(e.target.value)}
+                    onBlur={() => setNom(normalizeTitleCase(nom))}
                     className="w-full px-3.5 py-2.5 bg-bna-offwhite/50 border border-bna-border rounded-xl text-sm font-medium focus:outline-hidden focus:border-bna-copper"
                   />
                 </div>
@@ -493,6 +516,7 @@ export const NewChantierModal: React.FC<NewChantierModalProps> = ({
                       placeholder="Ville d'intervention *"
                       value={ville}
                       onChange={(e) => setVille(e.target.value)}
+                      onBlur={() => setVille(normalizeTitleCase(ville))}
                       className="w-full px-3.5 py-2 bg-bna-offwhite/50 border border-bna-border rounded-xl text-xs font-medium focus:outline-hidden focus:border-bna-copper"
                     />
                   </div>

@@ -23,7 +23,8 @@ export interface CreateChantierInput {
  */
 export function rowToChantier(
   row: ChantierRow,
-  client?: { nom?: string; prenom?: string | null; societe?: string | null }
+  client?: { nom?: string; prenom?: string | null; societe?: string | null; telephone?: string | null },
+  contact?: { nom?: string; prenom?: string | null; telephone?: string | null }
 ): Chantier {
   const clientNom = client
     ? client.societe || `${client.prenom ? client.prenom + " " : ""}${client.nom}`
@@ -33,6 +34,8 @@ export function rowToChantier(
     id: row.id,
     client_id: row.client_id,
     client_nom: clientNom,
+    telephoneClient: client?.telephone || undefined,
+    telephoneContact: contact?.telephone || undefined,
     nom: row.nom,
     ville: row.ville || "Gironde",
     adresse: row.adresse || undefined,
@@ -74,7 +77,7 @@ export async function getChantiers(
   try {
     let query = supabase
       .from("chantiers")
-      .select("*, clients(nom, prenom, societe)")
+      .select("*, clients(nom, prenom, societe, telephone), contacts_clients(nom, prenom, telephone)")
       .order("created_at", { ascending: false });
 
     if (!options?.includeDeleted) {
@@ -85,7 +88,9 @@ export async function getChantiers(
 
     if (!error && data !== null) {
       // Données réelles Supabase trouvées (même si vide [])
-      return data.map((item: any) => rowToChantier(item as ChantierRow, item.clients));
+      return data.map((item: any) =>
+        rowToChantier(item as ChantierRow, item.clients, item.contacts_clients)
+      );
     }
   } catch {
     // Mode hors-ligne ou erreur de requête
