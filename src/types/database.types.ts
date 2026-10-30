@@ -126,6 +126,9 @@ export interface CalepinageTerrasseRow {
   nb_lambourdes: number;
   nb_plots: number;
   nb_fixations: number;
+  disposition_joints?: "alignes" | "quinconce";
+  parametres?: Record<string, unknown> | null;
+  resultats?: Record<string, unknown> | null;
   created_at: string;
 }
 

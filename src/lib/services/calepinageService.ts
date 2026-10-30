@@ -9,8 +9,73 @@ export interface FullCalepinageTerrasse {
   besoins: BesoinMateriauRow[];
 }
 
+export interface BesoinPayload {
+  categorie: string;
+  designation: string;
+  unite: string;
+  quantite: number;
+}
+
 /**
- * Enregistre ou versionne un calepinage terrasse et génère les besoins matériaux associés
+ * Construit les besoins matériaux (désignations génériques : aucune référence produit
+ * ou fabricant n'est présumée).
+ */
+export function construireBesoinsTerrasse(result: CalepinageResult, params: CalepinageParams): BesoinPayload[] {
+  const fx = result.fixations;
+  const besoins: BesoinPayload[] = [
+    {
+      categorie: "lames",
+      designation: `Lames de platelage (${params.largeur_lame_mm} mm x ${params.longueur_lame_m} m)`,
+      unite: "lame(s)",
+      quantite: result.platelage.nb_lames_commandees,
+    },
+    {
+      categorie: "lambourdes",
+      designation: `Lambourdes (barres de ${result.structure.longueur_commerciale_lambourde_m} m)`,
+      unite: "barre(s)",
+      quantite: result.structure.nb_barres_lambourdes,
+    },
+    {
+      categorie: "plots",
+      designation: `Plots (entraxe ${result.details.entraxe_plots_cm} cm)`,
+      unite: "plot(s)",
+      quantite: result.supports.nb_plots_total,
+    },
+  ];
+
+  if (result.type_fixation === "vis") {
+    besoins.push({
+      categorie: "fixations",
+      designation: "Vis de fixation des lames",
+      unite: "vis",
+      quantite: fx.nb_vis_conditionnees,
+    });
+  } else {
+    besoins.push({
+      categorie: "fixations",
+      designation: "Clips de fixation (courants et aboutages)",
+      unite: "clip(s)",
+      quantite: fx.nb_clips_courants_aboutages_conditionnes,
+    });
+    if (fx.nb_clips_depart_fin > 0) {
+      besoins.push({
+        categorie: "fixations",
+        designation: "Clips de départ / fin",
+        unite: "clip(s)",
+        quantite: fx.nb_clips_depart_fin_conditionnes,
+      });
+    }
+  }
+  return besoins;
+}
+
+/**
+ * Enregistre un calepinage terrasse en créant une NOUVELLE version via la fonction
+ * PostgreSQL atomique `creer_calepinage_terrasse` (archivage de l'ancienne version,
+ * désactivation de ses besoins non commandés, création de la nouvelle version et de
+ * ses besoins, le tout dans une seule transaction avec verrou par chantier).
+ * L'entreprise est déduite de la session côté base : `entrepriseId` n'est utilisé que
+ * comme contrôle de cohérence côté client.
  */
 export async function saveCalepinageTerrasse(
   supabase: SupabaseClient<Database>,
@@ -21,136 +86,55 @@ export async function saveCalepinageTerrasse(
     calcParams: CalepinageParams;
   }
 ): Promise<FullCalepinageTerrasse> {
-  const result: CalepinageResult = calculerCalepinageTerrasse(params.calcParams);
+  if (!params.entrepriseId) throw new Error("Entreprise non identifiée : enregistrement refusé");
+  if (!params.chantierId) throw new Error("Chantier non identifié : enregistrement refusé");
 
-  // 1. Déterminer la version suivante pour ce chantier
-  const { data: existing } = await (supabase.from("calepinages") as any)
-    .select("version")
-    .eq("chantier_id", params.chantierId)
-    .order("version", { ascending: false })
-    .limit(1);
+  const cp = params.calcParams;
+  const result: CalepinageResult = calculerCalepinageTerrasse(cp);
 
-  const nextVersion = existing && existing.length > 0 ? (existing[0] as any).version + 1 : 1;
+  const details = {
+    longueur_m: cp.longueur_m,
+    largeur_m: cp.largeur_m,
+    orientation_lames: result.sens_pose_lames,
+    largeur_lame_mm: cp.largeur_lame_mm,
+    longueur_lame_m: cp.longueur_lame_m,
+    espace_inter_lames_mm: result.details.joint_inter_lames_mm,
+    entraxe_lambourdes_cm: result.details.entraxe_lambourdes_cm,
+    entraxe_plots_cm: result.details.entraxe_plots_cm,
+    type_fixation: result.type_fixation,
+    marge_chutes_pct: result.details.marge_appliquee_pct,
+    surface_m2: result.surface_nette_m2,
+    ml_lames: result.platelage.ml_lames_avec_marge,
+    nb_lames: result.platelage.nb_lames_commandees,
+    ml_lambourdes: result.structure.ml_lambourdes_avec_marge,
+    nb_lambourdes: result.structure.nb_barres_lambourdes,
+    nb_plots: result.supports.nb_plots_total,
+    nb_fixations: result.fixations.nb_fixations_a_commander,
+    disposition_joints: result.disposition_joints,
+  };
 
-  // 2. Si versions antérieures, archiver les anciennes versions
-  if (nextVersion > 1) {
-    await (supabase.from("calepinages") as any)
-      .update({ statut: "archive" })
-      .eq("chantier_id", params.chantierId)
-      .eq("statut", "valide");
+  const { data, error } = await (supabase as any).rpc("creer_calepinage_terrasse", {
+    p_chantier_id: params.chantierId,
+    p_details: details,
+    p_parametres: cp,
+    p_resultats: result,
+    p_besoins: construireBesoinsTerrasse(result, cp),
+  });
+
+  if (error) throw error;
+  if (!data || !data.calepinage || !data.details) {
+    throw new Error("Réponse invalide de la création de calepinage");
   }
 
-  // 3. Créer le calepinage parent
-  const { data: calepinageData, error: calError } = await (supabase.from("calepinages") as any)
-    .insert({
-      entreprise_id: params.entrepriseId,
-      chantier_id: params.chantierId,
-      metier: "terrasse",
-      version: nextVersion,
-      statut: "valide",
-      created_by: params.userId || null,
-    })
-    .select()
-    .single();
-
-  if (calError) throw calError;
-  const calepinage = calepinageData as CalepinageRow;
-
-  // 4. Créer les détails techniques terrasse
-  const { data: terrasseData, error: terError } = await (supabase.from("calepinages_terrasse") as any)
-    .insert({
-      calepinage_id: calepinage.id,
-      entreprise_id: params.entrepriseId,
-      longueur_m: params.calcParams.longueur_m,
-      largeur_m: params.calcParams.largeur_m,
-      orientation_lames: "longueur",
-      largeur_lame_mm: params.calcParams.largeur_lame_mm,
-      longueur_lame_m: params.calcParams.longueur_lame_m,
-      espace_inter_lames_mm: params.calcParams.espace_inter_lames_mm ?? 5.0,
-      entraxe_lambourdes_cm: params.calcParams.entraxe_lambourdes_cm ?? 40.0,
-      entraxe_plots_cm: params.calcParams.entraxe_plots_cm ?? 50.0,
-      type_fixation: result.type_fixation,
-      marge_chutes_pct: params.calcParams.marge_chutes_pct ?? 10.0,
-      surface_m2: result.surface_nette_m2,
-      ml_lames: result.ml_lames_total,
-      nb_lames: result.nb_lames_avec_marge,
-      ml_lambourdes: result.ml_lambourdes_total,
-      nb_lambourdes: result.nb_lambourdes_3m,
-      nb_plots: result.nb_plots_necessaires,
-      nb_fixations: result.nb_fixations,
-    })
-    .select()
-    .single();
-
-  if (terError) throw terError;
-  const details = terrasseData as CalepinageTerrasseRow;
-
-  // 5. Génération automatique des Besoins Matériaux
-  const besoinsToInsert = [
-    {
-      entreprise_id: params.entrepriseId,
-      chantier_id: params.chantierId,
-      calepinage_id: calepinage.id,
-      categorie: "lames",
-      designation: `Lames terrasse (${params.calcParams.largeur_lame_mm}mm x ${params.calcParams.longueur_lame_m}m)`,
-      unite: "lame(s)",
-      quantite: result.nb_lames_avec_marge,
-      origine: "calepinage",
-      statut: "a_commander",
-    },
-    {
-      entreprise_id: params.entrepriseId,
-      chantier_id: params.chantierId,
-      calepinage_id: calepinage.id,
-      categorie: "lambourdes",
-      designation: "Lambourdes pin classe 4 (section 45x70mm, 3m)",
-      unite: "lambourde(s)",
-      quantite: result.nb_lambourdes_3m,
-      origine: "calepinage",
-      statut: "a_commander",
-    },
-    {
-      entreprise_id: params.entrepriseId,
-      chantier_id: params.chantierId,
-      calepinage_id: calepinage.id,
-      categorie: "plots",
-      designation: `Plots réglables (entraxe ${params.calcParams.entraxe_plots_cm ?? 50}cm)`,
-      unite: "plot(s)",
-      quantite: result.nb_plots_necessaires,
-      origine: "calepinage",
-      statut: "a_commander",
-    },
-    {
-      entreprise_id: params.entrepriseId,
-      chantier_id: params.chantierId,
-      calepinage_id: calepinage.id,
-      categorie: "fixations",
-      designation:
-        result.type_fixation === "vis"
-          ? "Vis Inox A4 terrasse"
-          : "Clips de fixation invisible + vis inox",
-      unite: "unité(s)",
-      quantite: result.nb_fixations,
-      origine: "calepinage",
-      statut: "a_commander",
-    },
-  ];
-
-  const { data: besoinsData, error: besError } = await (supabase.from("besoins_materiaux") as any)
-    .insert(besoinsToInsert)
-    .select();
-
-  if (besError) throw besError;
-
   return {
-    calepinage,
-    details,
-    besoins: (besoinsData as BesoinMateriauRow[]) || [],
+    calepinage: data.calepinage as CalepinageRow,
+    details: data.details as CalepinageTerrasseRow,
+    besoins: (data.besoins as BesoinMateriauRow[]) || [],
   };
 }
 
 /**
- * Récupère le dernier calepinage valide d'un chantier
+ * Récupère le dernier calepinage valide d'un chantier (besoins actifs de cette version uniquement).
  */
 export async function getLatestCalepinageTerrasse(
   supabase: SupabaseClient<Database>,
@@ -161,6 +145,7 @@ export async function getLatestCalepinageTerrasse(
       .from("calepinages")
       .select("*")
       .eq("chantier_id", chantierId)
+      .eq("metier", "terrasse")
       .eq("statut", "valide")
       .order("version", { ascending: false })
       .limit(1)
