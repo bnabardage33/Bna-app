@@ -96,3 +96,25 @@ export function formatPhoneNumber(tel?: string | null): string {
 
   return trimmed;
 }
+
+/**
+ * Formate une date ISO en français pour l'affichage mobile :
+ * ex: "2026-10-30T14:32:00Z" -> "30 oct. 2026 à 14:32"
+ */
+export function formatDateFr(isoDate?: string | null): string {
+  if (!isoDate) return "";
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return isoDate;
+    return d.toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoDate;
+  }
+}
+

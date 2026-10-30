@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ArrowLeft,
   Camera,
@@ -20,12 +20,20 @@ import {
 import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 import { ConfirmModal } from "@/components/common/ConfirmModal";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getCalepinagesTerrasseByChantier,
+  getBesoinsByChantier,
+} from "@/lib/services/calepinageService";
+import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsTerrasseModal";
+import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 
 interface CockpitScreenProps {
   chantier?: Chantier;
   onBack: () => void;
   onOpenCalepinage: () => void;
   onSoftDelete?: (chantierId: string) => void;
+  refreshKey?: number;
 }
 
 export const CockpitScreen: React.FC<CockpitScreenProps> = ({
@@ -33,10 +41,45 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   onBack,
   onOpenCalepinage,
   onSoftDelete,
+  refreshKey = 0,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const metierConfig = METIERS_CONFIG[chantier.metier];
+
+  // Modales dédiées aux accès secondaires
+  const [isQuantitatifsOpen, setIsQuantitatifsOpen] = useState(false);
+  const [isMateriauxOpen, setIsMateriauxOpen] = useState(false);
+
+  // Indicateurs temps réel issus de Supabase
+  const [latestVersion, setLatestVersion] = useState<number | null>(null);
+  const [aCommanderCount, setACommanderCount] = useState<number>(0);
+
+  const supabase = createClient();
+
+  const loadIndicators = useCallback(async () => {
+    if (!chantier?.id) return;
+    try {
+      // 1. Version active calepinage terrasse
+      if (chantier.metier === "terrasse") {
+        const cals = await getCalepinagesTerrasseByChantier(supabase, chantier.id);
+        const active = cals.find((c) => c.calepinage.statut === "valide");
+        setLatestVersion(active ? active.calepinage.version : null);
+      } else {
+        setLatestVersion(null);
+      }
+
+      // 2. Besoins actifs à commander
+      const besoinsRes = await getBesoinsByChantier(supabase, chantier.id);
+      setACommanderCount(besoinsRes.totalACommander);
+    } catch {
+      // Conservation silencieuse en cas d'erreur de réseau temporaire
+    }
+  }, [supabase, chantier.id, chantier.metier]);
+
+  useEffect(() => {
+    loadIndicators();
+  }, [loadIndicators, refreshKey]);
 
   return (
     <div className="space-y-3 pb-8 animate-in fade-in duration-150">
@@ -226,12 +269,13 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         </button>
       </div>
 
-      {/* 7. Accès Secondaires */}
+      {/* 7. Accès Secondaires (Existants) */}
       <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
         <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block mb-2">
           ACCÈS SECONDAIRES
         </b>
         <div className="divide-y divide-bna-border/50 text-xs">
+          {/* Planning & Jalons */}
           <div
             onClick={() => alert("Accès Planning")}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
@@ -243,8 +287,15 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
             <ChevronRight className="w-4 h-4 text-bna-muted" />
           </div>
 
+          {/* Calepinage (Terrasse / Métier) */}
           <div
-            onClick={onOpenCalepinage}
+            onClick={() => {
+              if (chantier.metier === "terrasse") {
+                setIsQuantitatifsOpen(true);
+              } else {
+                onOpenCalepinage();
+              }
+            }}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
           >
             <div className="flex items-center gap-2">
@@ -253,20 +304,42 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
                 Calepinage ({metierConfig.label})
               </span>
             </div>
-            <ChevronRight className="w-4 h-4 text-bna-muted" />
+            <div className="flex items-center gap-2">
+              {chantier.metier === "terrasse" && (
+                latestVersion !== null ? (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                    V{latestVersion} ✓
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-bna-muted">Aucun</span>
+                )
+              )}
+              <ChevronRight className="w-4 h-4 text-bna-muted" />
+            </div>
           </div>
 
+          {/* Matériaux & Commandes */}
           <div
-            onClick={() => alert("Accès Matériaux & Commandes")}
+            onClick={() => setIsMateriauxOpen(true)}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
           >
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4 text-bna-muted" />
               <span className="font-medium text-bna-anthracite">Matériaux & Commandes</span>
             </div>
-            <ChevronRight className="w-4 h-4 text-bna-muted" />
+            <div className="flex items-center gap-2">
+              {aCommanderCount > 0 ? (
+                <span className="text-[10px] font-semibold text-bna-copper bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                  {aCommanderCount} à commander
+                </span>
+              ) : (
+                <span className="text-[10px] text-bna-muted">0 besoin</span>
+              )}
+              <ChevronRight className="w-4 h-4 text-bna-muted" />
+            </div>
           </div>
 
+          {/* Documents & Devis */}
           <div
             onClick={() => alert("Accès Documents & Devis")}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
@@ -278,6 +351,7 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
             <ChevronRight className="w-4 h-4 text-bna-muted" />
           </div>
 
+          {/* Dépenses & Heures passées */}
           <div
             onClick={() => alert("Accès Dépenses & Heures")}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
@@ -290,6 +364,32 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Modal Quantitatifs Terrasse (Vue liste versions active/archivée) */}
+      <QuantitatifsTerrasseModal
+        isOpen={isQuantitatifsOpen}
+        onClose={() => {
+          setIsQuantitatifsOpen(false);
+          loadIndicators();
+        }}
+        chantierId={chantier.id}
+        chantierNom={chantier.nom}
+        onOpenNewVersion={() => {
+          setIsQuantitatifsOpen(false);
+          onOpenCalepinage();
+        }}
+      />
+
+      {/* Modal Matériaux & Commandes (Besoins actifs & Historique) */}
+      <MateriauxCommandesModal
+        isOpen={isMateriauxOpen}
+        onClose={() => {
+          setIsMateriauxOpen(false);
+          loadIndicators();
+        }}
+        chantierId={chantier.id}
+        chantierNom={chantier.nom}
+      />
     </div>
   );
 };

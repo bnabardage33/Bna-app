@@ -177,3 +177,131 @@ export async function getLatestCalepinageTerrasse(
     return null;
   }
 }
+
+export interface CalepinageVersionItem {
+  calepinage: CalepinageRow;
+  details: CalepinageTerrasseRow | null;
+}
+
+/**
+ * Récupère l'ensemble des versions calepinage terrasse d'un chantier (actifs et archivés)
+ * ordonnés par version décroissante (V2, V1, etc.).
+ */
+export async function getCalepinagesTerrasseByChantier(
+  supabase: SupabaseClient<Database>,
+  chantierId: string
+): Promise<CalepinageVersionItem[]> {
+  try {
+    const { data: calepinages, error: calError } = await supabase
+      .from("calepinages")
+      .select("*")
+      .eq("chantier_id", chantierId)
+      .eq("metier", "terrasse")
+      .order("version", { ascending: false });
+
+    if (calError || !calepinages || calepinages.length === 0) return [];
+
+    const calList = calepinages as CalepinageRow[];
+    const calIds = calList.map((c) => c.id);
+    const { data: detailsData, error: detError } = await supabase
+      .from("calepinages_terrasse")
+      .select("*")
+      .in("calepinage_id", calIds);
+
+    const detailsMap = new Map<string, CalepinageTerrasseRow>();
+    if (!detError && detailsData) {
+      for (const d of detailsData as CalepinageTerrasseRow[]) {
+        detailsMap.set(d.calepinage_id, d);
+      }
+    }
+
+    return calList.map((c) => ({
+      calepinage: c,
+      details: detailsMap.get(c.id) || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export interface BesoinAvecVersion extends BesoinMateriauRow {
+  versionCalepinage?: number;
+}
+
+export interface BesoinsChantierResult {
+  actifs: BesoinMateriauRow[];
+  historique: BesoinAvecVersion[];
+  totalACommander: number;
+}
+
+/**
+ * Récupère les besoins d'un chantier, séparés entre actifs (liés au calepinage terrasse valide
+ * avec statut a_commander) et historique (archivés/annulés/commandés/reçus).
+ */
+export async function getBesoinsByChantier(
+  supabase: SupabaseClient<Database>,
+  chantierId: string
+): Promise<BesoinsChantierResult> {
+  try {
+    // 1. Calepinage terrasse actuellement valide
+    const { data: calValideData } = await supabase
+      .from("calepinages")
+      .select("id, version")
+      .eq("chantier_id", chantierId)
+      .eq("metier", "terrasse")
+      .eq("statut", "valide")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const calValide = calValideData as { id: string; version: number } | null;
+
+    // 2. Dictionnaire des versions de tous les calepinages du chantier
+    const { data: allCalsData } = await supabase
+      .from("calepinages")
+      .select("id, version")
+      .eq("chantier_id", chantierId);
+
+    const versionMap = new Map<string, number>();
+    if (allCalsData) {
+      for (const c of allCalsData as { id: string; version: number }[]) {
+        versionMap.set(c.id, c.version);
+      }
+    }
+
+    // 3. Récupérer tous les besoins du chantier
+    const { data: besoins, error } = await supabase
+      .from("besoins_materiaux")
+      .select("*")
+      .eq("chantier_id", chantierId)
+      .order("created_at", { ascending: true });
+
+    if (error || !besoins) return { actifs: [], historique: [], totalACommander: 0 };
+
+    const actifs: BesoinMateriauRow[] = [];
+    const historique: BesoinAvecVersion[] = [];
+    const calValideId = calValide?.id;
+
+    for (const b of besoins as BesoinMateriauRow[]) {
+      const version = b.calepinage_id ? versionMap.get(b.calepinage_id) : undefined;
+      // Les besoins actifs sont ceux du calepinage terrasse actuellement valide avec statut 'a_commander'
+      if (calValideId && b.calepinage_id === calValideId && b.statut === "a_commander") {
+        actifs.push(b);
+      } else {
+        historique.push({
+          ...b,
+          versionCalepinage: version,
+        });
+      }
+    }
+
+    return {
+      actifs,
+      historique,
+      totalACommander: actifs.length,
+    };
+  } catch {
+    return { actifs: [], historique: [], totalACommander: 0 };
+  }
+}
+

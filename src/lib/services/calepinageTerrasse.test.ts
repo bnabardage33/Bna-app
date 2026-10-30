@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { calculerCalepinageTerrasse, genererTrameLambourdesMm } from "../calepinage.ts";
 import type { CalepinageParams } from "../calepinage.ts";
-import { construireBesoinsTerrasse, saveCalepinageTerrasse } from "./calepinageService.ts";
+import {
+  construireBesoinsTerrasse,
+  saveCalepinageTerrasse,
+  getCalepinagesTerrasseByChantier,
+  getBesoinsByChantier,
+} from "./calepinageService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -175,6 +180,32 @@ function createMockSupabase(db: Db, sessionEntrepriseId: string | null) {
       }));
       db.besoins_materiaux.push(...besoins);
       return { data: { calepinage: cal, details: det, besoins }, error: null };
+    },
+    from: (tableName: string) => {
+      let rows = [...((db as any)[tableName] || [])];
+      const query: any = {
+        select: (_cols?: string) => query,
+        eq: (col: string, val: any) => {
+          rows = rows.filter((r) => r[col] === val);
+          return query;
+        },
+        in: (col: string, vals: any[]) => {
+          rows = rows.filter((r) => vals.includes(r[col]));
+          return query;
+        },
+        order: (col: string, opts?: { ascending?: boolean }) => {
+          const asc = opts?.ascending ?? true;
+          rows.sort((a, b) => (asc ? (a[col] > b[col] ? 1 : -1) : (a[col] < b[col] ? 1 : -1)));
+          return query;
+        },
+        limit: (n: number) => {
+          rows = rows.slice(0, n);
+          return query;
+        },
+        maybeSingle: async () => ({ data: rows[0] || null, error: null }),
+        then: (resolve: any) => Promise.resolve({ data: rows, error: null }).then(resolve),
+      };
+      return query;
     },
   } as any;
 }
@@ -506,6 +537,32 @@ async function runTests() {
     }
   }
   assert(nombres > 500, `O: ${nombres} valeurs numériques toutes finies`);
+
+  // P. Consultation des versions et besoins depuis le Cockpit (V1 archivée / V2 active)
+  const versionsChA = await getCalepinagesTerrasseByChantier(sbA, "ch-A");
+  assert(versionsChA.length === 3, "P: 3 versions enregistrées sur ch-A (V3 actuelle, V2 précédente, V1)");
+  const vActuelle = versionsChA.find((v) => v.calepinage.statut === "valide");
+  assert(!!vActuelle && vActuelle.calepinage.version === 3, "P: version active identifiée (V3)");
+  assert(vActuelle!.details?.nb_lames === 60, "P: détails exacts enregistrés de la version active");
+
+  const vArchives = versionsChA.filter((v) => v.calepinage.statut !== "valide");
+  assert(vArchives.length === 2, "P: 2 versions archivées consultables (V2 et V1)");
+  assert(vArchives.every((v) => v.calepinage.statut === "archive"), "P: toutes les versions précédentes ont statut = archive");
+
+  const besoinsChA = await getBesoinsByChantier(sbA, "ch-A");
+  assert(besoinsChA.actifs.length === 4, "P: 4 besoins actifs liés uniquement à la version valide");
+  assert(besoinsChA.totalACommander === 4, "P: indicateur Cockpit = 4 à commander");
+  assert(besoinsChA.actifs.every((b) => b.statut === "a_commander" && b.calepinage_id === vActuelle!.calepinage.id), "P: aucun besoin archivé dans les besoins actifs");
+
+  assert(besoinsChA.historique.length >= 4, "P: historique contient les besoins des versions archivées");
+  const besoinsV1InHist = besoinsChA.historique.filter((b) => b.versionCalepinage === 1);
+  assert(besoinsV1InHist.length === 4 && besoinsV1InHist.every((b) => b.statut === "annule"), "P: besoins V1 présents dans l'historique avec statut annule et version = 1");
+
+  // Chantier sans calepinage
+  const versionsChB = await getCalepinagesTerrasseByChantier(sbA, "ch-B");
+  assert(versionsChB.length === 0, "P: chantier sans calepinage -> 0 version");
+  const besoinsChB = await getBesoinsByChantier(sbA, "ch-B");
+  assert(besoinsChB.actifs.length === 0 && besoinsChB.totalACommander === 0, "P: chantier sans calepinage -> 0 besoin actif");
 
   console.log(`\n=== ${passed} VÉRIFICATIONS RÉUSSIES ===`);
 }

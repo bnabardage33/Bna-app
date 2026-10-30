@@ -37,6 +37,7 @@ export default function HomePage() {
 
   const [chantiers, setChantiers] = useState<Chantier[]>(Object.values(MOCK_CHANTIERS));
   const [activeChantierId, setActiveChantierId] = useState<string>("martin");
+  const [cockpitRefreshKey, setCockpitRefreshKey] = useState(0);
 
   const supabase = createClient();
 
@@ -116,6 +117,7 @@ export default function HomePage() {
               await handleSoftDeleteChantier(id);
               setCurrentTab("chantiers");
             }}
+            refreshKey={cockpitRefreshKey}
           />
         )}
 
@@ -276,6 +278,10 @@ export default function HomePage() {
       <CalepinageModal
         isOpen={isCalepinageOpen}
         onClose={() => setIsCalepinageOpen(false)}
+        chantierId={currentTab === "cockpit" ? currentChantier?.id : undefined}
+        onCalepinageSaved={() => {
+          setCockpitRefreshKey((k) => k + 1);
+        }}
       />
 
       {/* Modal Authentification Supabase */}
