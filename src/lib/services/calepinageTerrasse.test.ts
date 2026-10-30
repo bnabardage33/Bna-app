@@ -36,8 +36,8 @@ const REF: CalepinageParams = {
 };
 
 // ---------------------------------------------------------------------------
-// Émulation TypeScript de la fonction SQL creer_calepinage_terrasse (migration 007).
-// ATTENTION : ceci teste la logique documentée, pas le SQL lui-même (aucun Postgres local).
+// Émulation TypeScript de la fonction SQL creer_calepinage_terrasse (migrations 007 & 008).
+// ATTENTION : ceci valide le contrat fonctionnel et la robustesse en environnement local.
 // ---------------------------------------------------------------------------
 type Db = {
   chantiers: { id: string; entreprise_id: string }[];
@@ -50,23 +50,106 @@ function createMockSupabase(db: Db, sessionEntrepriseId: string | null) {
   let seq = 0;
   return {
     rpc: async (name: string, args: any) => {
-      if (name !== "creer_calepinage_terrasse") return { data: null, error: new Error("rpc inconnue") };
-      if (!sessionEntrepriseId) return { data: null, error: new Error("Utilisateur non authentifié") };
-      const chantier = db.chantiers.find((c) => c.id === args.p_chantier_id && c.entreprise_id === sessionEntrepriseId);
-      if (!chantier) return { data: null, error: new Error("Chantier introuvable ou non autorisé") };
-      if (!Array.isArray(args.p_besoins) || args.p_besoins.length === 0) {
-        return { data: null, error: new Error("Liste de besoins matériaux invalide") };
+      if (name !== "creer_calepinage_terrasse") {
+        return { data: null, error: new Error("rpc inconnue") };
       }
-      const version = Math.max(0, ...db.calepinages.filter((c) => c.chantier_id === chantier.id).map((c) => c.version)) + 1;
-      const archivés = db.calepinages.filter(
-        (c) => c.chantier_id === chantier.id && c.metier === "terrasse" && c.statut === "valide"
-      );
-      for (const a of archivés) {
-        a.statut = "archive";
-        for (const b of db.besoins_materiaux) {
-          if (b.calepinage_id === a.id && b.origine === "calepinage" && b.statut === "a_commander") b.statut = "annule";
+      if (!sessionEntrepriseId) {
+        return { data: null, error: new Error("Utilisateur non authentifié ou non rattaché à une entreprise") };
+      }
+      if (!args.p_chantier_id) {
+        return { data: null, error: new Error("Chantier obligatoire") };
+      }
+      const chantier = db.chantiers.find((c) => c.id === args.p_chantier_id && c.entreprise_id === sessionEntrepriseId);
+      if (!chantier) {
+        return { data: null, error: new Error("Chantier introuvable ou non autorisé") };
+      }
+
+      // Validations techniques migration 008
+      const d = args.p_details;
+      if (!d || typeof d !== "object") {
+        return { data: null, error: new Error("Détails techniques invalides : objet JSON requis") };
+      }
+      if (!args.p_parametres || typeof args.p_parametres !== "object") {
+        return { data: null, error: new Error("Paramètres invalides : objet JSON requis") };
+      }
+      if (!args.p_resultats || typeof args.p_resultats !== "object") {
+        return { data: null, error: new Error("Résultats invalides : objet JSON requis") };
+      }
+
+      const clesPositives = [
+        "longueur_m", "largeur_m", "largeur_lame_mm", "longueur_lame_m",
+        "entraxe_lambourdes_cm", "entraxe_plots_cm",
+        "surface_m2", "ml_lames", "ml_lambourdes",
+        "nb_lames", "nb_lambourdes", "nb_plots", "nb_fixations",
+      ];
+      for (const k of clesPositives) {
+        if (typeof d[k] !== "number" || Number.isNaN(d[k]) || d[k] <= 0) {
+          return { data: null, error: new Error(`Paramètre technique invalide ou manquant : ${k} (nombre strictement positif requis)`) };
         }
       }
+
+      const clesEntieres = ["nb_lames", "nb_lambourdes", "nb_plots", "nb_fixations"];
+      for (const k of clesEntieres) {
+        if (!Number.isInteger(d[k])) {
+          return { data: null, error: new Error(`Paramètre technique invalide : ${k} (entier requis)`) };
+        }
+      }
+
+      const clesPositivesOuNulles = ["espace_inter_lames_mm", "marge_chutes_pct"];
+      for (const k of clesPositivesOuNulles) {
+        if (typeof d[k] !== "number" || Number.isNaN(d[k]) || d[k] < 0) {
+          return { data: null, error: new Error(`Paramètre technique invalide ou manquant : ${k} (valeur >= 0 requise)`) };
+        }
+      }
+
+      if (!["longueur", "largeur"].includes(d.orientation_lames)) {
+        return { data: null, error: new Error("orientation_lames invalide : longueur ou largeur requis") };
+      }
+      if (!["vis", "clips"].includes(d.type_fixation)) {
+        return { data: null, error: new Error("type_fixation invalide : vis ou clips requis") };
+      }
+      if (d.disposition_joints !== "alignes") {
+        return { data: null, error: new Error("Les joints en quinconce ne sont pas encore disponibles dans Terrasse V1.1.") };
+      }
+
+      // Validation de chaque besoin
+      if (!Array.isArray(args.p_besoins) || args.p_besoins.length === 0) {
+        return { data: null, error: new Error("Liste de besoins matériaux invalide : tableau non vide requis") };
+      }
+      for (let i = 0; i < args.p_besoins.length; i++) {
+        const b = args.p_besoins[i];
+        if (!b || typeof b !== "object") {
+          return { data: null, error: new Error(`Besoin #${i + 1} invalide : objet JSON requis`) };
+        }
+        for (const k of ["categorie", "designation", "unite"]) {
+          if (typeof b[k] !== "string" || b[k].trim() === "") {
+            return { data: null, error: new Error(`Besoin #${i + 1} invalide : ${k} obligatoire et non vide`) };
+          }
+        }
+        if (typeof b.quantite !== "number" || Number.isNaN(b.quantite) || b.quantite <= 0) {
+          return { data: null, error: new Error(`Besoin #${i + 1} invalide : quantite strictement positive requise`) };
+        }
+      }
+
+      // Version calculée par chantier, entreprise ET métier
+      const terrasseCalepinages = db.calepinages.filter(
+        (c) => c.chantier_id === chantier.id && c.entreprise_id === sessionEntrepriseId && c.metier === "terrasse"
+      );
+      const version = Math.max(0, ...terrasseCalepinages.map((c) => c.version)) + 1;
+
+      // Archivage de l'ancienne version terrasse uniquement
+      const archives = db.calepinages.filter(
+        (c) => c.chantier_id === chantier.id && c.entreprise_id === sessionEntrepriseId && c.metier === "terrasse" && c.statut === "valide"
+      );
+      for (const a of archives) {
+        a.statut = "archive";
+        for (const b of db.besoins_materiaux) {
+          if (b.calepinage_id === a.id && b.origine === "calepinage" && b.statut === "a_commander") {
+            b.statut = "annule";
+          }
+        }
+      }
+
       const cal = {
         id: `cal-${++seq}`,
         entreprise_id: sessionEntrepriseId,
@@ -85,7 +168,10 @@ function createMockSupabase(db: Db, sessionEntrepriseId: string | null) {
         calepinage_id: cal.id,
         origine: "calepinage",
         statut: "a_commander",
-        ...b,
+        categorie: b.categorie.trim(),
+        designation: b.designation.trim(),
+        unite: b.unite.trim(),
+        quantite: b.quantite,
       }));
       db.besoins_materiaux.push(...besoins);
       return { data: { calepinage: cal, details: det, besoins }, error: null };
@@ -94,7 +180,7 @@ function createMockSupabase(db: Db, sessionEntrepriseId: string | null) {
 }
 
 async function runTests() {
-  console.log("=== TESTS QUANTITATIF TERRASSE V1.1 (JOINTS ALIGNÉS) ===");
+  console.log("=== TESTS QUANTITATIF TERRASSE V1.1 (JOINTS ALIGNÉS & SÉCURISATION 008) ===");
 
   // A. 2 × 2 m, lames 3 m : zéro aboutage
   const a = calculerCalepinageTerrasse({ ...REF, longueur_m: 2, largeur_m: 2 });
@@ -162,7 +248,6 @@ async function runTests() {
           try {
             r = calculerCalepinageTerrasse({ ...REF, longueur_m: L, longueur_lame_m: lame, entraxe_lambourdes_cm: entraxe, appuis_distincts_aboutage: distincts });
           } catch (err) {
-            // Cas géométriquement refusé (pièce résiduelle trop courte) : doit être un message explicite
             if (!(err as Error).message.includes("trop proche")) throw err;
             continue;
           }
@@ -208,76 +293,167 @@ async function runTests() {
   assert(besoinsClips.length === 5, "H: 5 besoins avec clips départ/fin");
   assert(construireBesoinsTerrasse(hSans, REF).length === 4, "H: 4 besoins sans clips départ/fin");
 
-  // I. Création V1 puis V2
+  // I. Cycle de vie V1 / V2 et indépendance vis-à-vis des autres métiers (Façade)
   const db: Db = {
     chantiers: [
       { id: "ch-A", entreprise_id: "ent-A" },
       { id: "ch-B", entreprise_id: "ent-B" },
     ],
-    calepinages: [],
+    calepinages: [
+      // Présence d'un calepinage préalable d'un autre métier (ex. façade en V3)
+      { id: "cal-facade-3", entreprise_id: "ent-A", chantier_id: "ch-A", metier: "facade", version: 3, statut: "valide" },
+    ],
     calepinages_terrasse: [],
     besoins_materiaux: [],
   };
   const sbA = createMockSupabase(db, "ent-A");
+
+  // I.1 V1 Terrasse créée à version=1 malgré Façade V3
   const v1 = await saveCalepinageTerrasse(sbA, { entrepriseId: "ent-A", chantierId: "ch-A", calcParams: REF });
-  assert(v1.calepinage.version === 1 && v1.calepinage.statut === "valide", "I: V1 créée et valide");
+  assert(v1.calepinage.version === 1 && v1.calepinage.statut === "valide", "I: V1 Terrasse créée avec version=1 (indépendante de Façade V3)");
   assert(v1.besoins.length === 4 && v1.besoins.every((x) => x.statut === "a_commander"), "I: besoins V1 actifs (a_commander)");
   assert(v1.details.disposition_joints === "alignes", "I: disposition des joints persistée");
+  const facadeCal = db.calepinages.find((x) => x.id === "cal-facade-3");
+  assert(facadeCal.statut === "valide", "I: Façade V3 non archivée par la création de Terrasse V1");
 
+  // I.2 V2 Terrasse
   const v2 = await saveCalepinageTerrasse(sbA, { entrepriseId: "ent-A", chantierId: "ch-A", calcParams: { ...REF, longueur_m: 7 } });
-  assert(v2.calepinage.version === 2 && v2.calepinage.statut === "valide", "I: V2 créée et valide");
-  const v1Row = db.calepinages.find((x) => x.version === 1);
-  assert(v1Row.statut === "archive", "I: V1 archivée");
+  assert(v2.calepinage.version === 2 && v2.calepinage.statut === "valide", "I: V2 Terrasse créée et valide");
+  const v1Row = db.calepinages.find((x) => x.metier === "terrasse" && x.version === 1);
+  assert(v1Row.statut === "archive", "I: V1 Terrasse archivée");
   const besoinsV1 = db.besoins_materiaux.filter((x) => x.calepinage_id === v1Row.id);
   assert(besoinsV1.length === 4 && besoinsV1.every((x) => x.statut === "annule"), "I: besoins V1 conservés mais désactivés (annule)");
   const actifs = db.besoins_materiaux.filter((x) => x.chantier_id === "ch-A" && x.statut === "a_commander");
   assert(actifs.length === 4 && actifs.every((x) => x.calepinage_id === v2.calepinage.id), "I: seuls les besoins V2 sont actifs");
-  assert(db.calepinages.filter((x) => x.statut === "valide").length === 1, "I: une seule version valide");
+  assert(db.calepinages.filter((x) => x.metier === "terrasse" && x.statut === "valide").length === 1, "I: une seule version terrasse valide");
 
-  // I bis. Besoins déjà commandés non modifiés
+  // I.3 Besoins déjà commandés non modifiés
   db.besoins_materiaux.find((x) => x.calepinage_id === v2.calepinage.id && x.categorie === "lames").statut = "commande";
   await saveCalepinageTerrasse(sbA, { entrepriseId: "ent-A", chantierId: "ch-A", calcParams: REF });
   const lamesV2 = db.besoins_materiaux.find((x) => x.calepinage_id === v2.calepinage.id && x.categorie === "lames");
   assert(lamesV2.statut === "commande", "I: un besoin déjà commandé n'est pas annulé silencieusement");
 
-  // J. Croisement inter-tenant refusé
-  let refuse = false;
+  // J. Sécurité multi-tenant et sessions
+  let refuseAutreChantier = false;
   try {
     await saveCalepinageTerrasse(sbA, { entrepriseId: "ent-A", chantierId: "ch-B", calcParams: REF });
   } catch {
-    refuse = true;
+    refuseAutreChantier = true;
   }
-  assert(refuse, "J: chantier d'une autre entreprise refusé");
+  assert(refuseAutreChantier, "J: chantier d'une autre entreprise refusé");
   assert(db.calepinages.every((x) => x.chantier_id !== "ch-B"), "J: aucune ligne créée pour le chantier d'une autre entreprise");
-  let sansSession = false;
+
+  let refuseSansSession = false;
   try {
     await saveCalepinageTerrasse(createMockSupabase(db, null), { entrepriseId: "ent-A", chantierId: "ch-A", calcParams: REF });
-  } catch {
-    sansSession = true;
+  } catch (err) {
+    refuseSansSession = true;
+    assert((err as Error).message.includes("non authentifié"), "J: message clair sur absence d'authentification");
   }
-  assert(sansSession, "J: création refusée sans session");
-  let sansEntreprise = false;
+  assert(refuseSansSession, "J: création refusée sans session active");
+
+  let refuseSansEntreprise = false;
   try {
     await saveCalepinageTerrasse(sbA, { entrepriseId: "", chantierId: "ch-A", calcParams: REF });
   } catch {
-    sansEntreprise = true;
+    refuseSansEntreprise = true;
   }
-  assert(sansEntreprise, "J: enregistrement refusé sans entreprise identifiée");
+  assert(refuseSansEntreprise, "J: enregistrement refusé sans entreprise identifiée côté client");
 
-  // Contrôle statique de la migration additive 007
-  const sql = readFileSync(new URL("../../../supabase/migrations/20261030000007_terrasse_v1_1_versionnement_et_coherence.sql", import.meta.url), "utf8");
-  assert(sql.includes("pg_advisory_xact_lock"), "SQL: verrou consultatif par chantier (anti-course sur max(version)+1)");
-  assert(sql.includes("statut = 'annule'") && sql.includes("statut = 'archive'"), "SQL: archivage version + désactivation besoins");
-  assert(sql.includes("SECURITY INVOKER") && sql.includes("get_auth_entreprise_id()"), "SQL: RLS conservée, entreprise déduite de la session");
+  // K. Sécurité RPC migration 008 : rejets stricts
+  // K.1 Joints en quinconce explicitement refusés par la RPC
+  const resQuinconce = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: { ...v1.details, disposition_joints: "quinconce" },
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: v1.besoins,
+  });
   assert(
-    ["fk_calepinages_chantier_entreprise", "fk_calepinages_terrasse_calepinage_entreprise", "fk_besoins_chantier_entreprise", "fk_besoins_calepinage_entreprise"].every((n) => sql.includes(n)),
-    "SQL: clés étrangères composites anti-croisement inter-tenant"
+    resQuinconce.error?.message === "Les joints en quinconce ne sont pas encore disponibles dans Terrasse V1.1.",
+    "K.1: RPC refuse explicitement disposition_joints = quinconce avec message exact"
   );
-  assert(sql.includes("ON DELETE SET NULL (calepinage_id)"), "SQL: SET NULL limité à calepinage_id");
-  assert(!/DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i.test(sql), "SQL: migration strictement additive");
 
-  // K. Saisies vides, nulles ou négatives refusées
-  const invalides: Partial<CalepinageParams>[] = [
+  // K.2 Valeur négative ou nulle refusée par la RPC
+  const resNeg = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: { ...v1.details, longueur_m: -5 },
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: v1.besoins,
+  });
+  assert(
+    resNeg.error?.message.includes("nombre strictement positif requis"),
+    "K.2: RPC refuse longueur_m négative"
+  );
+
+  const resEntier = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: { ...v1.details, nb_lames: 12.5 },
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: v1.besoins,
+  });
+  assert(
+    resEntier.error?.message.includes("entier requis"),
+    "K.2 bis: RPC refuse quantite nb_lames non entière"
+  );
+
+  // K.3 Besoin sans catégorie refusé par la RPC
+  const resSansCat = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: v1.details,
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: [{ categorie: "", designation: "Lames", unite: "u", quantite: 10 }],
+  });
+  assert(
+    resSansCat.error?.message.includes("categorie obligatoire"),
+    "K.3: RPC refuse un besoin sans categorie"
+  );
+
+  // K.4 Besoin avec quantité nulle ou négative refusé par la RPC
+  const resQteNulle = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: v1.details,
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: [{ categorie: "lames", designation: "Lames", unite: "u", quantite: 0 }],
+  });
+  assert(
+    resQteNulle.error?.message.includes("quantite strictement positive requise"),
+    "K.4: RPC refuse un besoin avec quantite nulle"
+  );
+
+  const resQteNeg = await sbA.rpc("creer_calepinage_terrasse", {
+    p_chantier_id: "ch-A",
+    p_details: v1.details,
+    p_parametres: REF,
+    p_resultats: b,
+    p_besoins: [{ categorie: "lames", designation: "Lames", unite: "u", quantite: -2 }],
+  });
+  assert(
+    resQteNeg.error?.message.includes("quantite strictement positive requise"),
+    "K.4 bis: RPC refuse un besoin avec quantite négative"
+  );
+
+  // L. Contrôle statique de la migration corrective additive 008
+  const sql008 = readFileSync(new URL("../../../supabase/migrations/20261030000008_securisation_rpc_terrasse.sql", import.meta.url), "utf8");
+  assert(sql008.includes("CREATE OR REPLACE FUNCTION public.creer_calepinage_terrasse"), "SQL 008: CREATE OR REPLACE FUNCTION présent");
+  assert(sql008.includes("uq_calepinages_chantier_metier_version"), "SQL 008: contrainte unique inclut (chantier_id, metier, version)");
+  assert(sql008.includes("Les joints en quinconce ne sont pas encore disponibles dans Terrasse V1.1."), "SQL 008: message de refus quinconce présent");
+  assert(sql008.includes("ERRCODE = '22023'"), "SQL 008: validation des entrées avec ERRCODE 22023");
+  assert(sql008.includes("metier = 'terrasse'"), "SQL 008: calcul de version et archivage filtrés sur metier = 'terrasse'");
+  assert(sql008.includes("statut = 'annule'") && sql008.includes("statut = 'archive'"), "SQL 008: archivage et annulation a_commander conservés");
+  assert(sql008.includes("VALIDATE CONSTRAINT"), "SQL 008: instructions de validation des contraintes présentes en commentaires");
+  assert(sql008.includes("ALTER TABLE public.calepinages DROP CONSTRAINT") || !/DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i.test(sql008.replace(/DROP CONSTRAINT [a-z0-9_]+/ig, "")), "SQL 008: strictement additive hormis le remplacement de contrainte");
+
+  // M. Contrôle statique de la migration 007 (immuable)
+  const sql007 = readFileSync(new URL("../../../supabase/migrations/20261030000007_terrasse_v1_1_versionnement_et_coherence.sql", import.meta.url), "utf8");
+  assert(sql007.includes("pg_advisory_xact_lock"), "SQL 007: intouché");
+
+  // N. Saisies vides, nulles ou négatives refusées par le moteur TypeScript
+  const invalidesTs: Partial<CalepinageParams>[] = [
     { longueur_m: 0 },
     { longueur_m: -2 },
     { largeur_m: 0 },
@@ -302,11 +478,11 @@ async function runTests() {
     { sens_pose_lames: "diagonale" as any },
     { disposition_joints: "quinconce" },
   ];
-  for (const inv of invalides) {
-    assert(throws(() => calculerCalepinageTerrasse({ ...REF, ...inv })), `K: refusé ${JSON.stringify(inv)}`);
+  for (const inv of invalidesTs) {
+    assert(throws(() => calculerCalepinageTerrasse({ ...REF, ...inv })), `N: TypeScript refuse ${JSON.stringify(inv)}`);
   }
 
-  // L. Aucun NaN / Infinity dans les résultats
+  // O. Aucun NaN / Infinity dans les résultats
   let nombres = 0;
   const verifier = (v: unknown, path: string) => {
     if (typeof v === "number") {
@@ -329,7 +505,7 @@ async function runTests() {
       }
     }
   }
-  assert(nombres > 500, `L: ${nombres} valeurs numériques toutes finies`);
+  assert(nombres > 500, `O: ${nombres} valeurs numériques toutes finies`);
 
   console.log(`\n=== ${passed} VÉRIFICATIONS RÉUSSIES ===`);
 }
