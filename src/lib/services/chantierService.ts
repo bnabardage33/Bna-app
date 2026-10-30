@@ -153,17 +153,22 @@ export async function updateChantierRecord(
 }
 
 /**
- * Mise à la corbeille sécurisée d'un chantier (Soft delete)
+ * Mise à la corbeille sécurisée d'un chantier (Soft delete).
+ * Récupère obligatoirement le user.id de la session Supabase active.
  */
 export async function softDeleteChantier(
   supabase: SupabaseClient<Database>,
-  chantierId: string,
-  userId?: string
+  chantierId: string
 ): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error("Opération refusée : session non authentifiée ou expirée.");
+  }
+
   const { error } = await (supabase.from("chantiers") as any)
     .update({
       deleted_at: new Date().toISOString(),
-      deleted_by: userId || null,
+      deleted_by: user.id,
     })
     .eq("id", chantierId);
 
@@ -171,7 +176,8 @@ export async function softDeleteChantier(
 }
 
 /**
- * Restauration d'un chantier depuis la corbeille
+ * Restauration d'un chantier depuis la corbeille.
+ * Remet obligatoirement deleted_at et deleted_by à null.
  */
 export async function restoreChantier(
   supabase: SupabaseClient<Database>,

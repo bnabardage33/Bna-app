@@ -57,7 +57,7 @@ export default function HomePage() {
 
   const handleSoftDeleteChantier = async (chantierId: string) => {
     try {
-      await softDeleteChantier(supabase, chantierId, user?.id);
+      await softDeleteChantier(supabase, chantierId);
       await refreshChantiers();
     } catch (err: any) {
       alert("Erreur mise à la corbeille : " + err.message);

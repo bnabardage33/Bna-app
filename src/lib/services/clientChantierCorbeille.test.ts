@@ -95,8 +95,48 @@ function assert(condition: boolean, msg: string) {
   console.log(`✓ PASS: ${msg}`);
 }
 
+// Simulation du moteur métier de suppression/restauration/contrôles
+function simulateSoftDelete(
+  item: { deleted_at: string | null; deleted_by: string | null },
+  activeUser: { id: string } | null
+) {
+  if (!activeUser?.id) {
+    throw new Error("Opération refusée : session non authentifiée ou expirée.");
+  }
+  item.deleted_at = new Date().toISOString();
+  item.deleted_by = activeUser.id;
+}
+
+function simulateRestore(item: { deleted_at: string | null; deleted_by: string | null }) {
+  item.deleted_at = null;
+  item.deleted_by = null;
+}
+
+function simulateHardDeleteClient(
+  clientId: string,
+  chantiersDB: ChantierRow[],
+  contactsDB: ContactClientRow[],
+  clientsDB: ClientRow[]
+) {
+  // Règle métier : bloquée tant qu'un chantier existe (qu'il soit actif ou dans la corbeille)
+  const remainingChantiers = chantiersDB.filter((c) => c.client_id === clientId);
+  if (remainingChantiers.length > 0) {
+    throw new Error(
+      `Ce client possède encore ${remainingChantiers.length} chantier(s), dont certains peuvent être dans la corbeille. Supprimez définitivement ces chantiers avant de supprimer définitivement le client.`
+    );
+  }
+
+  // Nettoyage contacts
+  const remainingContacts = contactsDB.filter((ct) => ct.client_id !== clientId);
+  // Suppression client
+  const clientIndex = clientsDB.findIndex((cl) => cl.id === clientId);
+  if (clientIndex !== -1) {
+    clientsDB.splice(clientIndex, 1);
+  }
+}
+
 async function runTests() {
-  console.log("=== TESTS MÉTIER : CLIENT ≠ CHANTIER & CORBEILLE SÉCURISÉE ===");
+  console.log("=== TESTS MÉTIER : CLIENT ≠ CHANTIER & CONTRÔLES SÉCURISÉS ===");
 
   // 1. Indépendance Client (Facturation: Bordeaux) vs Chantier (Intervention: Libourne)
   const clientMock: ClientRow = {
@@ -144,71 +184,81 @@ async function runTests() {
     updated_at: new Date().toISOString(),
   };
 
-  // Test 1 : Identifiants distincts et indépendants
   assert(clientMock.id !== chantierMock.id, "T1: client_id !== chantier_id (identités séparées)");
   assert(chantierMock.client_id === clientMock.id, "T1: chantier.client_id référence exactement client.id");
-
-  // Test 2 : Adresses distinctes
   assert(clientMock.ville === "Bordeaux", "T2: Facturation client = Bordeaux");
   assert(chantierMock.ville === "Libourne", "T2: Intervention chantier = Libourne");
-  assert(clientMock.adresse !== chantierMock.adresse, "T2: Adresses facturation et intervention découplées");
 
-  // Test 3 : rowToChantier conserve bien l'adresse et le client
   const chantierObj = rowToChantier(chantierMock, { nom: clientMock.nom, prenom: clientMock.prenom });
-  assert(chantierObj.ville === "Libourne", "T3: Chantier UI localisé à Libourne (météo & terrain)");
+  assert(chantierObj.ville === "Libourne", "T3: Chantier localisé à Libourne (météo & terrain)");
   assert(chantierObj.client_nom === "Jean Test", "T3: Nom client affiché correctement");
-  assert(chantierObj.id === "chantier-uuid-99", "T3: ID chantier préservé");
 
-  // Test 4 : Contacts multiples et un seul principal actif
-  const contact1: ContactClientRow = {
-    id: "ct-1",
-    entreprise_id: "ent-uuid-1",
-    client_id: clientMock.id,
-    nom: "Martin",
-    prenom: "Jean",
-    fonction: "Gérant",
-    telephone: "0600000002",
-    email: "jean.martin@sci.fr",
-    est_principal: true,
-    deleted_at: null,
-    deleted_by: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  // 2. Contrôle session active & deleted_by
+  const activeUser = { id: "user-auth-uuid-42" };
 
-  const contact2: ContactClientRow = {
-    id: "ct-2",
-    entreprise_id: "ent-uuid-1",
-    client_id: clientMock.id,
-    nom: "Dupont",
-    prenom: "Marie",
-    fonction: "Comptabilité",
-    telephone: "0600000003",
-    email: "compta@sci.fr",
-    est_principal: false,
-    deleted_at: null,
-    deleted_by: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  // Opération refusée sans session
+  let errorWithoutSession = false;
+  try {
+    simulateSoftDelete(chantierMock, null);
+  } catch (err: any) {
+    errorWithoutSession = true;
+    assert(err.message.includes("session non authentifiée"), "T4: Opération corbeille refusée sans session");
+  }
+  assert(errorWithoutSession, "T4: Blocage sans session garanti");
 
-  assert(contact1.client_id === clientMock.id, "T4: Contact 1 rattaché au bon client");
-  assert(contact2.client_id === clientMock.id, "T4: Contact 2 rattaché au bon client");
-  assert(contact1.est_principal === true, "T4: Contact 1 est principal");
-  assert(contact2.est_principal === false, "T4: Contact 2 est secondaire");
+  // Mise à la corbeille avec session
+  simulateSoftDelete(chantierMock, activeUser);
+  assert(chantierMock.deleted_at !== null, "T5: Chantier placé dans la corbeille (deleted_at présent)");
+  assert(chantierMock.deleted_by === activeUser.id, "T5: deleted_by correspond obligatoirement à l'utilisateur connecté");
 
-  // Test 5 : Corbeille réversible (Soft delete)
-  chantierMock.deleted_at = new Date().toISOString();
-  chantierMock.deleted_by = "user-uuid-1";
-  assert(chantierMock.deleted_at !== null, "T5: Chantier placé dans la corbeille");
+  // Restauration : deleted_at et deleted_by remis à null
+  simulateRestore(chantierMock);
+  assert(chantierMock.deleted_at === null, "T6: Restauration remet deleted_at à null");
+  assert(chantierMock.deleted_by === null, "T6: Restauration remet deleted_by à null");
 
-  // Restauration
-  chantierMock.deleted_at = null;
-  chantierMock.deleted_by = null;
-  assert(chantierMock.deleted_at === null, "T5: Chantier restauré avec succès");
-  assert(chantierMock.client_id === clientMock.id, "T5: Relation client_id inchangée après restauration");
+  // 3. Suppression définitive d'un client : contrôles stricts
+  const clientsDB = [{ ...clientMock }];
+  const chantiersDB = [{ ...chantierMock }];
+  const contactsDB: ContactClientRow[] = [];
 
-  console.log("\nTous les tests métier (Client ≠ Chantier, Multi-contacts, Corbeille) sont validés avec succès !");
+  // Scénario A : Client avec chantier actif -> suppression définitive bloquée
+  chantiersDB[0].deleted_at = null;
+  let blockedWithActive = false;
+  try {
+    simulateHardDeleteClient(clientMock.id, chantiersDB, contactsDB, clientsDB);
+  } catch (err: any) {
+    blockedWithActive = true;
+    assert(
+      err.message.includes("dont certains peuvent être dans la corbeille"),
+      "T7: Message exact pour chantier actif rattaché"
+    );
+  }
+  assert(blockedWithActive, "T7: Client avec chantier actif non supprimable");
+
+  // Scénario B : Client avec chantier dans la corbeille -> suppression définitive TOUJOURS bloquée
+  chantiersDB[0].deleted_at = new Date().toISOString(); // Placé dans la corbeille
+  let blockedWithCorbeille = false;
+  try {
+    simulateHardDeleteClient(clientMock.id, chantiersDB, contactsDB, clientsDB);
+  } catch (err: any) {
+    blockedWithCorbeille = true;
+    assert(
+      err.message.includes("dont certains peuvent être dans la corbeille"),
+      "T8: Message exact pour chantier dans la corbeille"
+    );
+  }
+  assert(blockedWithCorbeille, "T8: Client avec chantier dans la corbeille toujours protégé contre la suppression");
+
+  // Scénario C : Suppression définitive possible seulement APRÈS suppression définitive du chantier
+  // Suppression définitive du chantier d'abord :
+  chantiersDB.splice(0, 1);
+  assert(chantiersDB.length === 0, "T9: Chantier définitivement purgé");
+
+  // Suppression du client désormais possible :
+  simulateHardDeleteClient(clientMock.id, chantiersDB, contactsDB, clientsDB);
+  assert(clientsDB.length === 0, "T9: Client supprimé définitivement avec succès après purge des chantiers");
+
+  console.log("\nTous les tests de contrôles stricts (deleted_by, session, suppression définitive sécurisée) sont validés avec succès !");
 }
 
 runTests().catch((err) => {

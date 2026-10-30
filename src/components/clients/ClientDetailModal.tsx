@@ -123,7 +123,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   const handleConfirmDeleteContact = async () => {
     if (!contactToDelete) return;
     try {
-      await softDeleteContact(supabase, contactToDelete.id, user?.id);
+      await softDeleteContact(supabase, contactToDelete.id);
       setContactToDelete(null);
       loadContacts();
     } catch (err: any) {
@@ -133,7 +133,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
   const handleConfirmDeleteClient = async () => {
     try {
-      await softDeleteClient(supabase, client.id, user?.id);
+      await softDeleteClient(supabase, client.id);
       setConfirmDeleteClientOpen(false);
       onClientUpdated();
       onClose();

@@ -120,12 +120,18 @@ export async function updateClientRecord(
 /**
  * Mise à la corbeille sécurisée d'un client.
  * Bloque la suppression si le client possède des chantiers actifs (deleted_at IS NULL).
+ * Récupère obligatoirement le user.id de la session Supabase active.
  */
 export async function softDeleteClient(
   supabase: SupabaseClient<Database>,
-  clientId: string,
-  userId?: string
+  clientId: string
 ): Promise<void> {
+  // 0. Vérification de la session active (interdit tout ID libre ou non authentifié)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error("Opération refusée : session non authentifiée ou expirée.");
+  }
+
   // 1. Vérifier les chantiers actifs
   const { count, error: countError } = await supabase
     .from("chantiers")
@@ -141,11 +147,11 @@ export async function softDeleteClient(
     );
   }
 
-  // 2. Soft delete
+  // 2. Soft delete avec deleted_by strict
   const { error } = await (supabase.from("clients") as any)
     .update({
       deleted_at: new Date().toISOString(),
-      deleted_by: userId || null,
+      deleted_by: user.id,
     })
     .eq("id", clientId);
 
@@ -153,7 +159,8 @@ export async function softDeleteClient(
 }
 
 /**
- * Restauration d'un client depuis la corbeille
+ * Restauration d'un client depuis la corbeille.
+ * Remet obligatoirement deleted_at et deleted_by à null.
  */
 export async function restoreClient(
   supabase: SupabaseClient<Database>,
@@ -170,12 +177,31 @@ export async function restoreClient(
 }
 
 /**
- * Suppression définitive d'un client (Hard delete - réservé au dirigeant)
+ * Suppression définitive d'un client (Hard delete - réservé au dirigeant).
+ * Bloquée tant qu'un chantier lié existe encore (qu'il soit actif ou dans la corbeille).
  */
 export async function hardDeleteClient(
   supabase: SupabaseClient<Database>,
   clientId: string
 ): Promise<void> {
+  // 1. Vérifier si un quelconque chantier lié existe encore (actif OU corbeille)
+  const { count, error: countError } = await supabase
+    .from("chantiers")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId);
+
+  if (countError) throw countError;
+
+  if (count && count > 0) {
+    throw new Error(
+      `Ce client possède encore ${count} chantier(s), dont certains peuvent être dans la corbeille. Supprimez définitivement ces chantiers avant de supprimer définitivement le client.`
+    );
+  }
+
+  // 2. Nettoyage des contacts rattachés
+  await (supabase.from("contacts_clients") as any).delete().eq("client_id", clientId);
+
+  // 3. Suppression définitive du client
   const { error } = await supabase.from("clients").delete().eq("id", clientId);
   if (error) throw error;
 }
@@ -268,17 +294,21 @@ export async function updateContactRecord(
 }
 
 /**
- * Soft delete d'un contact
+ * Soft delete d'un contact avec vérification de la session active
  */
 export async function softDeleteContact(
   supabase: SupabaseClient<Database>,
-  contactId: string,
-  userId?: string
+  contactId: string
 ): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    throw new Error("Opération refusée : session non authentifiée ou expirée.");
+  }
+
   const { error } = await (supabase.from("contacts_clients") as any)
     .update({
       deleted_at: new Date().toISOString(),
-      deleted_by: userId || null,
+      deleted_by: user.id,
     })
     .eq("id", contactId);
 
@@ -286,7 +316,7 @@ export async function softDeleteContact(
 }
 
 /**
- * Restauration d'un contact
+ * Restauration d'un contact (deleted_at et deleted_by remis à null)
  */
 export async function restoreContact(
   supabase: SupabaseClient<Database>,
