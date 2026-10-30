@@ -272,6 +272,24 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
           </button>
         </div>
 
+        {!chantierIdProp && (
+          <div className="mt-3">
+            <label className={labelCls}>Chantier</label>
+            <select
+              value={selectedChantierId}
+              onChange={(e) => setSelectedChantierId(e.target.value)}
+              className={selectCls}
+            >
+              <option value="">— Choisir un chantier —</option>
+              {chantiersTerrasse.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nom}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-1.5 p-1 bg-bna-offwhite rounded-xl border border-bna-border mt-3 text-xs font-semibold">
           {(["terrasse", "facade", "cloture"] as MetierType[]).map((m) => (
             <button
@@ -551,7 +569,7 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
               )}
             </Section>
 
-            <Section title="5. Résultats" defaultOpen>
+            <Section title="5. Résultats">
               {calcError && (
                 <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-px" />
@@ -590,8 +608,8 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
                   </div>
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-bna-copper uppercase">Supports</span>
-                    <Row label="Plots de base" value={result.supports.plots_lignes_base} />
-                    <Row label="Plots d'aboutage" value={result.supports.plots_appuis_aboutage} />
+                    <Row label="Plots structure régulière" value={result.supports.plots_lignes_base} />
+                    <Row label="Plots appuis d'aboutage" value={result.supports.plots_appuis_aboutage} />
                     <Row label="Total plots" value={result.supports.nb_plots_total} />
                   </div>
                   <div className="space-y-1">
@@ -667,24 +685,6 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
             <span className="inline-block text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
               Module à venir
             </span>
-          </div>
-        )}
-
-        {selectedMetier === "terrasse" && !chantierIdProp && (
-          <div className="mt-3">
-            <label className={labelCls}>Chantier terrasse (pour enregistrer)</label>
-            <select
-              value={selectedChantierId}
-              onChange={(e) => setSelectedChantierId(e.target.value)}
-              className={selectCls}
-            >
-              <option value="">— Choisir un chantier —</option>
-              {chantiersTerrasse.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nom}
-                </option>
-              ))}
-            </select>
           </div>
         )}
 
