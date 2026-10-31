@@ -24,6 +24,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   getCalepinagesTerrasseByChantier,
   getBesoinsByChantier,
+  CalepinageVersionItem,
 } from "@/lib/services/calepinageService";
 import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsTerrasseModal";
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
@@ -31,7 +32,7 @@ import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommand
 interface CockpitScreenProps {
   chantier?: Chantier;
   onBack: () => void;
-  onOpenCalepinage: () => void;
+  onOpenCalepinage: (sourceVersion?: CalepinageVersionItem | null) => void;
   onSoftDelete?: (chantierId: string) => void;
   refreshKey?: number;
 }
@@ -374,9 +375,9 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         }}
         chantierId={chantier.id}
         chantierNom={chantier.nom}
-        onOpenNewVersion={() => {
+        onOpenNewVersion={(sourceVersion) => {
           setIsQuantitatifsOpen(false);
-          onOpenCalepinage();
+          onOpenCalepinage(sourceVersion);
         }}
       />
 

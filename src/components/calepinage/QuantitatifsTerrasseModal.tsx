@@ -15,7 +15,7 @@ interface QuantitatifsTerrasseModalProps {
   onClose: () => void;
   chantierId: string;
   chantierNom?: string;
-  onOpenNewVersion: () => void;
+  onOpenNewVersion: (sourceVersion?: CalepinageVersionItem | null) => void;
 }
 
 export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps> = ({
@@ -215,7 +215,7 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
                           type="button"
                           onClick={() => {
                             onClose();
-                            onOpenNewVersion();
+                            onOpenNewVersion(activeVersion);
                           }}
                           className="flex-1 min-h-[40px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
                         >
@@ -237,7 +237,7 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
                         type="button"
                         onClick={() => {
                           onClose();
-                          onOpenNewVersion();
+                          onOpenNewVersion(null);
                         }}
                         className="mt-2 min-h-[40px] px-4 bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl inline-flex items-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
                       >
@@ -314,10 +314,10 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
         onClose={handleCloseDetail}
         versionItem={selectedVersion}
         chantierNom={chantierNom}
-        onNewVersion={() => {
+        onNewVersion={(source) => {
           handleCloseDetail();
           onClose();
-          onOpenNewVersion();
+          onOpenNewVersion(source);
         }}
       />
     </>

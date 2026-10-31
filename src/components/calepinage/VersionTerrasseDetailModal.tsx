@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { X, CheckCircle2, Archive, Calendar, ArrowRight, ShieldCheck } from "lucide-react";
+import { X, CheckCircle2, Archive, Calendar, ShieldCheck } from "lucide-react";
 import type { CalepinageVersionItem } from "@/lib/services/calepinageService";
 import { formatDateFr } from "@/lib/formatters";
 
@@ -10,7 +10,7 @@ interface VersionTerrasseDetailModalProps {
   onClose: () => void;
   versionItem: CalepinageVersionItem | null;
   chantierNom?: string;
-  onNewVersion?: () => void;
+  onNewVersion?: (sourceVersion: CalepinageVersionItem) => void;
 }
 
 const Row: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
@@ -106,7 +106,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 flex items-start gap-2">
               <Archive className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
               <span>
-                Cette version est archivée et conservée pour l’historique technique. Elle est en lecture seule.
+                Cette version est figée. Vous pouvez repartir de ses paramètres pour créer une nouvelle version.
               </span>
             </div>
           )}
@@ -218,12 +218,23 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onNewVersion();
+                onNewVersion(versionItem);
               }}
               className="flex-1 min-h-[44px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
             >
-              <span>+ Nouvelle version</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>✏️ Corriger / Nouvelle version</span>
+            </button>
+          )}
+          {!isValid && onNewVersion && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewVersion(versionItem);
+              }}
+              className="flex-1 min-h-[44px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
+            >
+              <span>Reprendre comme nouvelle version</span>
             </button>
           )}
         </div>

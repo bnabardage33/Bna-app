@@ -13,7 +13,11 @@ import { MetierType, METIERS_CONFIG } from "@/types/metier";
 import { isValidDecimalInput, parseDecimal } from "@/lib/decimalInput";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/useAuth";
-import { saveCalepinageTerrasse, getLatestCalepinageTerrasse } from "@/lib/services/calepinageService";
+import {
+  saveCalepinageTerrasse,
+  getLatestCalepinageTerrasse,
+  CalepinageVersionItem,
+} from "@/lib/services/calepinageService";
 import { getChantiers } from "@/lib/services/chantierService";
 import type { Chantier } from "@/types/metier";
 
@@ -22,6 +26,7 @@ interface CalepinageModalProps {
   onClose: () => void;
   defaultMetier?: MetierType;
   chantierId?: string;
+  initialVersionItem?: CalepinageVersionItem | null;
   onCalepinageSaved?: () => void;
 }
 
@@ -70,11 +75,26 @@ function optionalInt(s: string): number | undefined {
   return numOrNaN(s);
 }
 
+const parseParamsObject = (raw: unknown): Record<string, any> => {
+  if (!raw) return {};
+  if (typeof raw === "object" && raw !== null) return raw as Record<string, any>;
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      return typeof p === "object" && p !== null ? p : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
 export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   isOpen,
   onClose,
   defaultMetier = "terrasse",
   chantierId: chantierIdProp,
+  initialVersionItem,
   onCalepinageSaved,
 }) => {
   const { entreprise } = useAuth();
@@ -107,7 +127,11 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   const [boiteClipsDFInput, setBoiteClipsDFInput] = useState("");
   const [clipsDepartFin, setClipsDepartFin] = useState(false);
 
-  const [currentVersion, setCurrentVersion] = useState<number>(0);
+  // Versions et statut technique
+  const [sourceVersionNumber, setSourceVersionNumber] = useState<number | null>(null);
+  const [sourceStatut, setSourceStatut] = useState<string | null>(null);
+  const [nextVersionNumber, setNextVersionNumber] = useState<number>(1);
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -127,47 +151,151 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, chantierIdProp]);
 
+  const applyParameters = (d: any, rawParams: unknown) => {
+    const p = parseParamsObject(rawParams);
+
+    if (p.longueur_m !== undefined && p.longueur_m !== null) {
+      setLongueurInput(String(p.longueur_m));
+    } else if (d?.longueur_m !== undefined && d?.longueur_m !== null) {
+      setLongueurInput(String(d.longueur_m));
+    }
+
+    if (p.largeur_m !== undefined && p.largeur_m !== null) {
+      setLargeurInput(String(p.largeur_m));
+    } else if (d?.largeur_m !== undefined && d?.largeur_m !== null) {
+      setLargeurInput(String(d.largeur_m));
+    }
+
+    const sensVal = p.sens_pose_lames ?? d?.orientation_lames;
+    if (sensVal === "largeur" || sensVal === "longueur") {
+      setSens(sensVal as SensPoseLames);
+    }
+
+    if (p.largeur_lame_mm !== undefined && p.largeur_lame_mm !== null) {
+      setLargeurLame(Number(p.largeur_lame_mm));
+    } else if (d?.largeur_lame_mm !== undefined && d?.largeur_lame_mm !== null) {
+      setLargeurLame(Number(d.largeur_lame_mm));
+    }
+
+    if (p.longueur_lame_m !== undefined && p.longueur_lame_m !== null) {
+      setLongueurLame(Number(p.longueur_lame_m));
+    } else if (d?.longueur_lame_m !== undefined && d?.longueur_lame_m !== null) {
+      setLongueurLame(Number(d.longueur_lame_m));
+    }
+
+    const jeuVal = p.espace_inter_lames_mm ?? d?.espace_inter_lames_mm;
+    if (jeuVal !== undefined && jeuVal !== null) {
+      setJeuInput(String(jeuVal));
+    }
+
+    const margeVal = p.marge_chutes_pct ?? d?.marge_chutes_pct;
+    if (margeVal !== undefined && margeVal !== null) {
+      setMarge(Number(margeVal));
+      setMargeInput(String(margeVal));
+    }
+
+    const entraxeLambVal = p.entraxe_lambourdes_cm ?? d?.entraxe_lambourdes_cm;
+    if (entraxeLambVal !== undefined && entraxeLambVal !== null) {
+      setEntraxeLambInput(String(entraxeLambVal));
+    }
+
+    const entraxePlotsVal = p.entraxe_plots_cm ?? d?.entraxe_plots_cm;
+    if (entraxePlotsVal !== undefined && entraxePlotsVal !== null) {
+      setEntraxePlotsInput(String(entraxePlotsVal));
+    }
+
+    const typeFixVal = p.type_fixation ?? d?.type_fixation;
+    if (typeFixVal === "clips" || typeFixVal === "vis") {
+      setTypeFixation(typeFixVal as TypeFixationCalepinage);
+    }
+
+    // Longueur lambourde commerciale
+    const lc = p.longueur_lambourde_commerciale_m;
+    if (lc === 3) {
+      setLambChoix("3");
+      setLambCustomInput("");
+    } else if (lc === 4) {
+      setLambChoix("4");
+      setLambCustomInput("");
+    } else if (lc !== undefined && lc !== null && !isNaN(Number(lc))) {
+      setLambChoix("autre");
+      setLambCustomInput(String(lc));
+    }
+
+    // Marges lambourdes et fixations
+    if (p.marge_lambourdes_pct !== undefined && p.marge_lambourdes_pct !== null) {
+      setMargeLambInput(String(p.marge_lambourdes_pct));
+    }
+    if (p.marge_fixations_pct !== undefined && p.marge_fixations_pct !== null) {
+      setMargeFixInput(String(p.marge_fixations_pct));
+    }
+
+    // Boîtes conditionnement et clips départ/fin
+    if (p.taille_boite_vis !== undefined && p.taille_boite_vis !== null) {
+      setBoiteVisInput(p.taille_boite_vis ? String(p.taille_boite_vis) : "");
+    }
+    if (p.taille_boite_clips !== undefined && p.taille_boite_clips !== null) {
+      setBoiteClipsInput(p.taille_boite_clips ? String(p.taille_boite_clips) : "");
+    }
+    if (p.taille_boite_clips_depart_fin !== undefined && p.taille_boite_clips_depart_fin !== null) {
+      setBoiteClipsDFInput(p.taille_boite_clips_depart_fin ? String(p.taille_boite_clips_depart_fin) : "");
+    }
+    if (p.utiliser_clips_depart_fin !== undefined && p.utiliser_clips_depart_fin !== null) {
+      setClipsDepartFin(Boolean(p.utiliser_clips_depart_fin));
+    }
+  };
+
   useEffect(() => {
-    async function loadSavedCalepinage() {
-      if (!chantierId) return;
-      const saved = await getLatestCalepinageTerrasse(supabase, chantierId);
-      if (!saved || !saved.details) {
-        setCurrentVersion(0);
+    async function loadCalepinageData() {
+      if (!isOpen) return;
+
+      let maxV = 0;
+      if (chantierId) {
+        try {
+          const { data: maxRow } = await supabase
+            .from("calepinages")
+            .select("version")
+            .eq("chantier_id", chantierId)
+            .eq("metier", "terrasse")
+            .order("version", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          maxV = (maxRow as any)?.version ?? 0;
+        } catch {
+          maxV = 0;
+        }
+      }
+
+      if (initialVersionItem && initialVersionItem.details) {
+        setSourceVersionNumber(initialVersionItem.calepinage.version);
+        setSourceStatut(initialVersionItem.calepinage.statut);
+        setNextVersionNumber(Math.max(maxV, initialVersionItem.calepinage.version) + 1);
+        applyParameters(initialVersionItem.details, initialVersionItem.details.parametres);
         return;
       }
-      setCurrentVersion(saved.calepinage.version);
-      const p = (saved.details.parametres || null) as Partial<CalepinageParams> | null;
-      const d = saved.details;
-      setLongueurInput(String(p?.longueur_m ?? d.longueur_m));
-      setLargeurInput(String(p?.largeur_m ?? d.largeur_m));
-      setLargeurLame(p?.largeur_lame_mm ?? d.largeur_lame_mm);
-      setLongueurLame(p?.longueur_lame_m ?? d.longueur_lame_m);
-      setMarge(p?.marge_chutes_pct ?? d.marge_chutes_pct);
-      setMargeInput(String(p?.marge_chutes_pct ?? d.marge_chutes_pct));
-      setTypeFixation((p?.type_fixation ?? d.type_fixation) as TypeFixationCalepinage);
-      setSens(((p?.sens_pose_lames ?? d.orientation_lames) === "largeur" ? "largeur" : "longueur") as SensPoseLames);
-      setJeuInput(String(p?.espace_inter_lames_mm ?? d.espace_inter_lames_mm));
-      setEntraxeLambInput(String(p?.entraxe_lambourdes_cm ?? d.entraxe_lambourdes_cm));
-      setEntraxePlotsInput(String(p?.entraxe_plots_cm ?? d.entraxe_plots_cm));
-      if (p) {
-        const lc = p.longueur_lambourde_commerciale_m;
-        if (lc === 3) setLambChoix("3");
-        else if (lc === 4) setLambChoix("4");
-        else if (lc) {
-          setLambChoix("autre");
-          setLambCustomInput(String(lc));
+
+      if (chantierId) {
+        const saved = await getLatestCalepinageTerrasse(supabase, chantierId);
+        if (saved && saved.details) {
+          setSourceVersionNumber(saved.calepinage.version);
+          setSourceStatut(saved.calepinage.statut);
+          setNextVersionNumber(Math.max(maxV, saved.calepinage.version) + 1);
+          applyParameters(saved.details, saved.details.parametres);
+        } else {
+          setSourceVersionNumber(null);
+          setSourceStatut(null);
+          setNextVersionNumber(maxV + 1);
         }
-        if (p.marge_lambourdes_pct !== undefined) setMargeLambInput(String(p.marge_lambourdes_pct));
-        if (p.marge_fixations_pct !== undefined) setMargeFixInput(String(p.marge_fixations_pct));
-        setBoiteVisInput(p.taille_boite_vis ? String(p.taille_boite_vis) : "");
-        setBoiteClipsInput(p.taille_boite_clips ? String(p.taille_boite_clips) : "");
-        setBoiteClipsDFInput(p.taille_boite_clips_depart_fin ? String(p.taille_boite_clips_depart_fin) : "");
-        setClipsDepartFin(!!p.utiliser_clips_depart_fin);
+      } else {
+        setSourceVersionNumber(null);
+        setSourceStatut(null);
+        setNextVersionNumber(1);
       }
     }
-    if (isOpen) loadSavedCalepinage();
+
+    loadCalepinageData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, chantierId]);
+  }, [isOpen, chantierId, initialVersionItem]);
 
   if (!isOpen) return null;
 
@@ -226,7 +354,9 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
         chantierId,
         calcParams,
       });
-      setCurrentVersion(saved.calepinage.version);
+      setSourceVersionNumber(saved.calepinage.version);
+      setSourceStatut(saved.calepinage.statut);
+      setNextVersionNumber(saved.calepinage.version + 1);
       setSaveSuccessMsg(
         `Quantitatif V${saved.calepinage.version} enregistré — ${saved.besoins.length} besoins matériaux générés.`
       );
@@ -256,11 +386,18 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
               <Calculator className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="font-display font-bold text-base text-bna-anthracite">Quantitatif Terrasse</h3>
-                {currentVersion > 0 && (
+                {sourceVersionNumber !== null ? (
                   <span className="text-[10px] font-bold text-bna-copper bg-bna-copper-light/60 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                    <History className="w-2.5 h-2.5" />V{currentVersion}
+                    <History className="w-2.5 h-2.5" />
+                    {sourceStatut === "valide"
+                      ? `Correction V${sourceVersionNumber} → V${nextVersionNumber}`
+                      : `Reprise V${sourceVersionNumber} → V${nextVersionNumber}`}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-bna-copper bg-bna-copper-light/60 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                    <History className="w-2.5 h-2.5" />V{nextVersionNumber}
                   </span>
                 )}
               </div>
@@ -712,8 +849,8 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
             <CheckCircle2 className="w-4 h-4" />
             <span>
               {isSaving
-                ? `Enregistrement V${currentVersion + 1}...`
-                : `Valider ce quantitatif (créer V${currentVersion + 1} & besoins)`}
+                ? `Enregistrement V${nextVersionNumber}...`
+                : `Valider ce quantitatif (créer V${nextVersionNumber} & besoins)`}
             </span>
           </button>
         )}

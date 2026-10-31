@@ -21,6 +21,7 @@ import { Chantier } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 import { createClient } from "@/lib/supabase/client";
 import { getChantiers, softDeleteChantier } from "@/lib/services/chantierService";
+import type { CalepinageVersionItem } from "@/lib/services/calepinageService";
 import { useAuth } from "@/lib/auth/useAuth";
 import { HardHat, Users, Trash2, FileText, Sparkles, Plus } from "lucide-react";
 
@@ -31,6 +32,7 @@ export default function HomePage() {
 
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [isCalepinageOpen, setIsCalepinageOpen] = useState(false);
+  const [calepinageSourceVersion, setCalepinageSourceVersion] = useState<CalepinageVersionItem | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
   const [isCorbeilleOpen, setIsCorbeilleOpen] = useState(false);
@@ -101,7 +103,10 @@ export default function HomePage() {
         {currentTab === "terrain" && (
           <TerrainScreen
             chantier={currentChantier}
-            onOpenCalepinage={() => setIsCalepinageOpen(true)}
+            onOpenCalepinage={() => {
+              setCalepinageSourceVersion(null);
+              setIsCalepinageOpen(true);
+            }}
             onOpenCockpit={() => setCurrentTab("cockpit")}
             onSelectChantier={(id) => setActiveChantierId(id)}
           />
@@ -112,7 +117,10 @@ export default function HomePage() {
           <CockpitScreen
             chantier={currentChantier}
             onBack={() => setCurrentTab("chantiers")}
-            onOpenCalepinage={() => setIsCalepinageOpen(true)}
+            onOpenCalepinage={(sourceVersion) => {
+              setCalepinageSourceVersion(sourceVersion || null);
+              setIsCalepinageOpen(true);
+            }}
             onSoftDelete={async (id) => {
               await handleSoftDeleteChantier(id);
               setCurrentTab("chantiers");
@@ -267,7 +275,10 @@ export default function HomePage() {
       <QuickActionModal
         isOpen={isQuickActionOpen}
         onClose={() => setIsQuickActionOpen(false)}
-        onOpenCalepinage={() => setIsCalepinageOpen(true)}
+        onOpenCalepinage={() => {
+          setCalepinageSourceVersion(null);
+          setIsCalepinageOpen(true);
+        }}
         onOpenNewChantier={() => {
           setIsQuickActionOpen(false);
           setIsNewChantierOpen(true);
@@ -277,8 +288,12 @@ export default function HomePage() {
       {/* Modal Calepinage Déterministe */}
       <CalepinageModal
         isOpen={isCalepinageOpen}
-        onClose={() => setIsCalepinageOpen(false)}
+        onClose={() => {
+          setIsCalepinageOpen(false);
+          setCalepinageSourceVersion(null);
+        }}
         chantierId={currentTab === "cockpit" ? currentChantier?.id : undefined}
+        initialVersionItem={calepinageSourceVersion}
         onCalepinageSaved={() => {
           setCockpitRefreshKey((k) => k + 1);
         }}

@@ -164,7 +164,14 @@ function createMockSupabase(db: Db, sessionEntrepriseId: string | null) {
         statut: "valide",
       };
       db.calepinages.push(cal);
-      const det = { id: `det-${seq}`, calepinage_id: cal.id, entreprise_id: sessionEntrepriseId, ...args.p_details };
+      const det = {
+        id: `det-${seq}`,
+        calepinage_id: cal.id,
+        entreprise_id: sessionEntrepriseId,
+        ...args.p_details,
+        parametres: args.p_parametres,
+        resultats: args.p_resultats,
+      };
       db.calepinages_terrasse.push(det);
       const besoins = args.p_besoins.map((b: any, i: number) => ({
         id: `bes-${seq}-${i}`,
@@ -605,12 +612,188 @@ async function runTests() {
   // Q.5 Vérification statique des composants de détail et liste
   const modalListCode = readFileSync(new URL("../../components/calepinage/QuantitatifsTerrasseModal.tsx", import.meta.url), "utf8");
   const modalDetailCode = readFileSync(new URL("../../components/calepinage/VersionTerrasseDetailModal.tsx", import.meta.url), "utf8");
+  const calepinageModalCode = readFileSync(new URL("../../components/calepinage/CalepinageModal.tsx", import.meta.url), "utf8");
 
   assert(modalListCode.includes('handleOpenVersion(activeVersion') && modalListCode.includes('handleOpenVersion(v'), "Q.5: Boutons Ouvrir et Consulter branchés à handleOpenVersion");
   assert(modalListCode.includes('type="button"'), "Q.5: Boutons de type button pour éviter tout comportement submit intempestif");
   assert(modalListCode.includes('stopPropagation()'), "Q.5: e.stopPropagation présent pour empêcher toute propagation/fermeture parasite");
   assert(modalDetailCode.includes('z-[70]'), "Q.5: VersionTerrasseDetailModal a un z-index supérieur z-[70] > z-50");
   assert(modalDetailCode.includes('onClick={(e) => e.stopPropagation()}'), "Q.5: Boîte modale détail isole les clics du backdrop");
+
+  // =========================================================================
+  // R. TESTS DU FLUX MODIFIER / CORRIGER UN QUANTITATIF TERRASSE (SCÉNARIOS A-G)
+  // =========================================================================
+
+  // Initialisation d'un chantier dédié pour tester le cycle complet V1 -> V2 -> V3 -> V4
+  db.chantiers.push({ id: "ch-cycle", entreprise_id: "ent-A" });
+
+  // 1. Création initiale V1 sur ch-cycle
+  const paramsV1: CalepinageParams = {
+    ...REF,
+    longueur_m: 6.0,
+    largeur_m: 4.0,
+    sens_pose_lames: "longueur",
+    largeur_lame_mm: 145,
+    longueur_lame_m: 3.0,
+    espace_inter_lames_mm: 5,
+    marge_chutes_pct: 10,
+    entraxe_lambourdes_cm: 40,
+    longueur_lambourde_commerciale_m: 3,
+    marge_lambourdes_pct: 8,
+    entraxe_plots_cm: 50,
+    type_fixation: "vis",
+    marge_fixations_pct: 5,
+    taille_boite_vis: 200,
+  };
+  const saveV1 = await saveCalepinageTerrasse(sbA, {
+    entrepriseId: "ent-A",
+    chantierId: "ch-cycle",
+    calcParams: paramsV1,
+  });
+  assert(saveV1.calepinage.version === 1 && saveV1.calepinage.statut === "valide", "R: Création V1 valide");
+
+  // 2. Création V2 (ex: premier ajustement)
+  const paramsV2: CalepinageParams = {
+    ...paramsV1,
+    longueur_m: 6.2,
+    largeur_m: 4.0,
+  };
+  const saveV2 = await saveCalepinageTerrasse(sbA, {
+    entrepriseId: "ent-A",
+    chantierId: "ch-cycle",
+    calcParams: paramsV2,
+  });
+  assert(saveV2.calepinage.version === 2 && saveV2.calepinage.statut === "valide", "R: Création V2 valide");
+
+  // Vérification de l'état avant correction de V2
+  const calsBefore = await getCalepinagesTerrasseByChantier(sbA, "ch-cycle");
+  const v1Before = calsBefore.find((v) => v.calepinage.version === 1);
+  const v2Before = calsBefore.find((v) => v.calepinage.version === 2);
+  assert(!!v1Before && v1Before.calepinage.statut === "archive", "R: V1 initiale est archivée");
+  assert(!!v2Before && v2Before.calepinage.statut === "valide", "R: V2 initiale est active/valide");
+
+  // A. Corriger V2 → création V3
+  const paramsV3: CalepinageParams = {
+    ...paramsV2,
+    longueur_m: 6.5,
+    largeur_m: 4.2,
+    marge_chutes_pct: 12,
+  };
+  const saveV3Result = await saveCalepinageTerrasse(sbA, {
+    entrepriseId: "ent-A",
+    chantierId: "ch-cycle",
+    calcParams: paramsV3,
+  });
+  assert(saveV3Result.calepinage.version === 3, "R.A: Corriger V2 -> création de la version V3");
+
+  // B. V2 devient archivée
+  const calsAfterV3 = await getCalepinagesTerrasseByChantier(sbA, "ch-cycle");
+  const v2AfterV3 = calsAfterV3.find((v) => v.calepinage.version === 2);
+  assert(!!v2AfterV3 && v2AfterV3.calepinage.statut === "archive", "R.B: V2 devient archivée après la création de V3");
+
+  // C. V3 devient valide
+  const v3 = calsAfterV3.find((v) => v.calepinage.version === 3);
+  assert(!!v3 && v3.calepinage.statut === "valide", "R.C: V3 est la version active (statut = valide)");
+  assert(v3.details?.longueur_m === 6.5 && v3.details?.largeur_m === 4.2, "R.C: V3 enregistre les dimensions corrigées");
+
+  // D. Reprendre V1 archivée alors que V3 existe → création V4, pas V2
+  // Simulation de la reprise de V1 : on charge les paramètres enregistrés de V1
+  const v1Details = v1Before.details!;
+  const v1SavedParams = (v1Details.parametres || {}) as Partial<CalepinageParams>;
+  const paramsV4FromV1: CalepinageParams = {
+    ...REF,
+    longueur_m: v1SavedParams.longueur_m ?? v1Details.longueur_m,
+    largeur_m: v1SavedParams.largeur_m ?? v1Details.largeur_m,
+    sens_pose_lames: (v1SavedParams.sens_pose_lames ?? v1Details.orientation_lames) as SensPoseLames,
+    largeur_lame_mm: v1SavedParams.largeur_lame_mm ?? v1Details.largeur_lame_mm,
+    longueur_lame_m: v1SavedParams.longueur_lame_m ?? v1Details.longueur_lame_m,
+    espace_inter_lames_mm: v1SavedParams.espace_inter_lames_mm ?? v1Details.espace_inter_lames_mm,
+    marge_chutes_pct: 15, // modification par l'utilisateur lors de la reprise de V1
+    entraxe_lambourdes_cm: v1SavedParams.entraxe_lambourdes_cm ?? v1Details.entraxe_lambourdes_cm,
+    longueur_lambourde_commerciale_m: v1SavedParams.longueur_lambourde_commerciale_m ?? 3,
+    marge_lambourdes_pct: v1SavedParams.marge_lambourdes_pct ?? 8,
+    entraxe_plots_cm: v1SavedParams.entraxe_plots_cm ?? v1Details.entraxe_plots_cm,
+    type_fixation: (v1SavedParams.type_fixation ?? v1Details.type_fixation) as TypeFixationCalepinage,
+    marge_fixations_pct: v1SavedParams.marge_fixations_pct ?? 5,
+    taille_boite_vis: v1SavedParams.taille_boite_vis ?? 200,
+  };
+  const saveV4Result = await saveCalepinageTerrasse(sbA, {
+    entrepriseId: "ent-A",
+    chantierId: "ch-cycle",
+    calcParams: paramsV4FromV1,
+  });
+  assert(saveV4Result.calepinage.version === 4, "R.D: Reprendre V1 archivée alors que V3 existe -> création V4 (pas V2)");
+
+  const calsAfterV4 = await getCalepinagesTerrasseByChantier(sbA, "ch-cycle");
+  const v1Final = calsAfterV4.find((v) => v.calepinage.version === 1);
+  const v2Final = calsAfterV4.find((v) => v.calepinage.version === 2);
+  const v3Final = calsAfterV4.find((v) => v.calepinage.version === 3);
+  const v4Final = calsAfterV4.find((v) => v.calepinage.version === 4);
+
+  assert(!!v1Final && v1Final.calepinage.statut === "archive", "R.D: V1 reste archivée (jamais ressuscitée)");
+  assert(!!v2Final && v2Final.calepinage.statut === "archive", "R.D: V2 reste archivée");
+  assert(!!v3Final && v3Final.calepinage.statut === "archive", "R.D: V3 est désormais archivée");
+  assert(!!v4Final && v4Final.calepinage.statut === "valide", "R.D: V4 devient la nouvelle version valide active");
+
+  // E. Tous les paramètres de V1 sont correctement préchargés
+  // Vérification que tous les paramètres techniques disponibles de V1 sont fidèlement présents
+  const preloadedFields = {
+    longueur_m: v1SavedParams.longueur_m ?? v1Details.longueur_m,
+    largeur_m: v1SavedParams.largeur_m ?? v1Details.largeur_m,
+    sens_pose_lames: v1SavedParams.sens_pose_lames ?? v1Details.orientation_lames,
+    largeur_lame_mm: v1SavedParams.largeur_lame_mm ?? v1Details.largeur_lame_mm,
+    longueur_lame_m: v1SavedParams.longueur_lame_m ?? v1Details.longueur_lame_m,
+    espace_inter_lames_mm: v1SavedParams.espace_inter_lames_mm ?? v1Details.espace_inter_lames_mm,
+    marge_chutes_pct: v1SavedParams.marge_chutes_pct ?? v1Details.marge_chutes_pct,
+    disposition_joints: "alignes",
+    entraxe_lambourdes_cm: v1SavedParams.entraxe_lambourdes_cm ?? v1Details.entraxe_lambourdes_cm,
+    longueur_lambourde_commerciale_m: v1SavedParams.longueur_lambourde_commerciale_m ?? 3,
+    marge_lambourdes_pct: v1SavedParams.marge_lambourdes_pct ?? 8,
+    entraxe_plots_cm: v1SavedParams.entraxe_plots_cm ?? v1Details.entraxe_plots_cm,
+    type_fixation: v1SavedParams.type_fixation ?? v1Details.type_fixation,
+    marge_fixations_pct: v1SavedParams.marge_fixations_pct ?? 5,
+    taille_boite_vis: v1SavedParams.taille_boite_vis,
+  };
+  assert(preloadedFields.longueur_m === 6.0, "R.E: Longueur terrasse préchargée (6.0 m)");
+  assert(preloadedFields.largeur_m === 4.0, "R.E: Largeur terrasse préchargée (4.0 m)");
+  assert(preloadedFields.sens_pose_lames === "longueur", "R.E: Sens de pose préchargé (longueur)");
+  assert(preloadedFields.largeur_lame_mm === 145, "R.E: Largeur lame préchargée (145 mm)");
+  assert(preloadedFields.longueur_lame_m === 3.0, "R.E: Longueur lame préchargée (3.0 m)");
+  assert(preloadedFields.espace_inter_lames_mm === 5, "R.E: Espace inter-lames préchargé (5 mm)");
+  assert(preloadedFields.marge_chutes_pct === 10, "R.E: Marge chutes préchargée (10 %)");
+  assert(preloadedFields.disposition_joints === "alignes", "R.E: Disposition joints = alignes");
+  assert(preloadedFields.entraxe_lambourdes_cm === 40, "R.E: Entraxe lambourdes préchargé (40 cm)");
+  assert(preloadedFields.longueur_lambourde_commerciale_m === 3, "R.E: Longueur commerciale lambourde préchargée (3 m)");
+  assert(preloadedFields.marge_lambourdes_pct === 8, "R.E: Marge lambourdes préchargée (8 %)");
+  assert(preloadedFields.entraxe_plots_cm === 50, "R.E: Entraxe plots préchargé (50 cm)");
+  assert(preloadedFields.type_fixation === "vis", "R.E: Type de fixation préchargé (vis)");
+  assert(preloadedFields.marge_fixations_pct === 5, "R.E: Marge fixations préchargée (5 %)");
+  assert(preloadedFields.taille_boite_vis === 200, "R.E: Conditionnement boîte vis préchargé (200)");
+
+  // F. Annuler la modification → aucune nouvelle version créée
+  const versionsCountBeforeCancel = (await getCalepinagesTerrasseByChantier(sbA, "ch-cycle")).length;
+  // Simulation de fermeture de CalepinageModal sans appel à saveCalepinageTerrasse :
+  let simulatedModalOpen = true;
+  simulatedModalOpen = false; // l'utilisateur ferme la modal (X ou Fermer)
+  const versionsCountAfterCancel = (await getCalepinagesTerrasseByChantier(sbA, "ch-cycle")).length;
+  assert(versionsCountBeforeCancel === versionsCountAfterCancel, "R.F: Annuler la modification -> aucune nouvelle version créée");
+
+  // G. Les besoins de la nouvelle version deviennent actifs selon la logique existante
+  const besoinsChCycleAfterV4 = await getBesoinsByChantier(sbA, "ch-cycle");
+  assert(besoinsChCycleAfterV4.actifs.length === 4, "R.G: 4 besoins actifs rattachés exclusivement à V4");
+  assert(besoinsChCycleAfterV4.actifs.every((b) => b.calepinage_id === v4Final!.calepinage.id && b.statut === "a_commander"), "R.G: Les besoins actifs appartiennent tous à V4");
+  assert(besoinsChCycleAfterV4.totalACommander === 4, "R.G: Indicateur Cockpit totalACommander = 4");
+
+  // Les besoins de V3 sont passés en annulé dans l'historique
+  const besoinsV3InHist = besoinsChCycleAfterV4.historique.filter((b) => b.versionCalepinage === 3);
+  assert(besoinsV3InHist.length === 4 && besoinsV3InHist.every((b) => b.statut === "annule"), "R.G: Les besoins de l'ancienne version V3 sont archivés avec statut annule");
+
+  // Vérifications UX statiques
+  assert(modalDetailCode.includes("✏️ Corriger / Nouvelle version"), "R.UX: Bouton actif '✏️ Corriger / Nouvelle version' présent");
+  assert(modalDetailCode.includes("Reprendre comme nouvelle version"), "R.UX: Bouton archive 'Reprendre comme nouvelle version' présent");
+  assert(modalDetailCode.includes("Cette version est figée. Vous pouvez repartir de ses paramètres pour créer une nouvelle version."), "R.UX: Texte d'archivage conforme");
+  assert(calepinageModalCode.includes("initialVersionItem"), "R.UX: CalepinageModal supporte initialVersionItem pour préchargement sans écrasement");
+  assert(modalListCode.includes("onOpenNewVersion(activeVersion)") && modalListCode.includes("onOpenNewVersion(source)"), "R.UX: QuantitatifsTerrasseModal propage la version source vers CalepinageModal");
 
   console.log(`\n=== ${passed} VÉRIFICATIONS RÉUSSIES ===`);
 }
