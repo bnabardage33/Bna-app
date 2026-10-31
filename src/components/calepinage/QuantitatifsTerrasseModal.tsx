@@ -219,8 +219,7 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
                           }}
                           className="flex-1 min-h-[40px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
                         >
-                          <Plus className="w-4 h-4" />
-                          <span>+ Nouvelle version</span>
+                          <span>✏ Modifier</span>
                         </button>
                       </div>
                     </div>

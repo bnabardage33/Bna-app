@@ -848,9 +848,7 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>
-              {isSaving
-                ? `Enregistrement V${nextVersionNumber}...`
-                : `Valider ce quantitatif (créer V${nextVersionNumber} & besoins)`}
+              {isSaving ? "Enregistrement en cours..." : "Enregistrer le quantitatif"}
             </span>
           </button>
         )}

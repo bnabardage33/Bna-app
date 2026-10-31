@@ -106,7 +106,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
             <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 flex items-start gap-2">
               <Archive className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
               <span>
-                Cette version est figée. Vous pouvez repartir de ses paramètres pour créer une nouvelle version.
+                Cette version est archivée. Vous pouvez utiliser ses paramètres comme base d’un nouveau quantitatif.
               </span>
             </div>
           )}
@@ -222,7 +222,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
               }}
               className="flex-1 min-h-[44px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
             >
-              <span>✏️ Corriger / Nouvelle version</span>
+              <span>✏ Modifier</span>
             </button>
           )}
           {!isValid && onNewVersion && (
@@ -234,7 +234,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
               }}
               className="flex-1 min-h-[44px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
             >
-              <span>Reprendre comme nouvelle version</span>
+              <span>Utiliser comme base</span>
             </button>
           )}
         </div>

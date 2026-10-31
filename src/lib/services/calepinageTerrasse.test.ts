@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { calculerCalepinageTerrasse, genererTrameLambourdesMm } from "../calepinage.ts";
-import type { CalepinageParams } from "../calepinage.ts";
+import type { CalepinageParams, SensPoseLames, TypeFixationCalepinage } from "../calepinage.ts";
 import {
   construireBesoinsTerrasse,
   saveCalepinageTerrasse,
@@ -694,11 +694,11 @@ async function runTests() {
   // C. V3 devient valide
   const v3 = calsAfterV3.find((v) => v.calepinage.version === 3);
   assert(!!v3 && v3.calepinage.statut === "valide", "R.C: V3 est la version active (statut = valide)");
-  assert(v3.details?.longueur_m === 6.5 && v3.details?.largeur_m === 4.2, "R.C: V3 enregistre les dimensions corrigées");
+  assert(v3!.details?.longueur_m === 6.5 && v3!.details?.largeur_m === 4.2, "R.C: V3 enregistre les dimensions corrigées");
 
   // D. Reprendre V1 archivée alors que V3 existe → création V4, pas V2
   // Simulation de la reprise de V1 : on charge les paramètres enregistrés de V1
-  const v1Details = v1Before.details!;
+  const v1Details = v1Before!.details!;
   const v1SavedParams = (v1Details.parametres || {}) as Partial<CalepinageParams>;
   const paramsV4FromV1: CalepinageParams = {
     ...REF,
@@ -789,9 +789,11 @@ async function runTests() {
   assert(besoinsV3InHist.length === 4 && besoinsV3InHist.every((b) => b.statut === "annule"), "R.G: Les besoins de l'ancienne version V3 sont archivés avec statut annule");
 
   // Vérifications UX statiques
-  assert(modalDetailCode.includes("✏️ Corriger / Nouvelle version"), "R.UX: Bouton actif '✏️ Corriger / Nouvelle version' présent");
-  assert(modalDetailCode.includes("Reprendre comme nouvelle version"), "R.UX: Bouton archive 'Reprendre comme nouvelle version' présent");
-  assert(modalDetailCode.includes("Cette version est figée. Vous pouvez repartir de ses paramètres pour créer une nouvelle version."), "R.UX: Texte d'archivage conforme");
+  assert(modalDetailCode.includes("✏ Modifier"), "R.UX: Bouton actif '✏ Modifier' présent dans VersionTerrasseDetailModal");
+  assert(modalDetailCode.includes("Utiliser comme base"), "R.UX: Bouton archive 'Utiliser comme base' présent dans VersionTerrasseDetailModal");
+  assert(modalDetailCode.includes("Cette version est archivée. Vous pouvez utiliser ses paramètres comme base d’un nouveau quantitatif."), "R.UX: Texte d'archivage conforme");
+  assert(modalListCode.includes("✏ Modifier"), "R.UX: Bouton actif '✏ Modifier' présent dans QuantitatifsTerrasseModal");
+  assert(calepinageModalCode.includes("Enregistrer le quantitatif"), "R.UX: Bouton de validation 'Enregistrer le quantitatif' présent dans CalepinageModal");
   assert(calepinageModalCode.includes("initialVersionItem"), "R.UX: CalepinageModal supporte initialVersionItem pour préchargement sans écrasement");
   assert(modalListCode.includes("onOpenNewVersion(activeVersion)") && modalListCode.includes("onOpenNewVersion(source)"), "R.UX: QuantitatifsTerrasseModal propage la version source vers CalepinageModal");
 
