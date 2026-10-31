@@ -20,6 +20,20 @@ const Row: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value
   </div>
 );
 
+const parseJsonField = (val: unknown): Record<string, any> => {
+  if (!val) return {};
+  if (typeof val === "object" && val !== null) return val as Record<string, any>;
+  if (typeof val === "string") {
+    try {
+      const parsed = JSON.parse(val);
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+};
+
 export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProps> = ({
   isOpen,
   onClose,
@@ -33,11 +47,17 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
   const det = versionItem.details;
   const isValid = cal.statut === "valide";
 
-  const params = (det?.parametres || {}) as Record<string, any>;
-  const res = (det?.resultats || {}) as Record<string, any>;
+  const params = parseJsonField(det?.parametres);
+  const res = parseJsonField(det?.resultats);
 
   return (
-    <div className="fixed inset-0 z-60 flex items-start justify-center pt-2 sm:pt-6 pb-20 sm:pb-8 px-3 sm:px-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 z-[70] flex items-start justify-center pt-2 sm:pt-6 pb-20 sm:pb-8 px-3 sm:px-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
       <div
         className="w-full max-w-mobile bg-white rounded-2xl max-h-full flex flex-col overflow-hidden shadow-2xl border border-bna-border animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
@@ -67,7 +87,11 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
             </p>
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="p-2 rounded-full hover:bg-neutral-100 text-bna-muted"
             aria-label="Fermer"
           >
@@ -89,105 +113,111 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
 
           {/* Synthèse principale */}
           <div className="grid grid-cols-2 gap-2">
-          <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
-            <span className="text-[10px] font-bold text-bna-muted uppercase block">Surface nette</span>
-            <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
-              {det ? `${det.surface_m2} m²` : "—"}
-            </span>
-            <span className="text-[11px] text-bna-muted">
-              {det ? `${det.longueur_m} m × ${det.largeur_m} m` : ""}
-            </span>
-          </div>
-          <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
-            <span className="text-[10px] font-bold text-bna-copper uppercase block">Lames</span>
-            <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
-              {det ? `${det.nb_lames}` : "—"}
-            </span>
-            <span className="text-[11px] text-bna-muted">
-              {det ? `lames de ${det.longueur_lame_m} m` : ""}
-            </span>
-          </div>
-          <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
-            <span className="text-[10px] font-bold text-bna-muted uppercase block">Lambourdes</span>
-            <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
-              {det ? `${det.nb_lambourdes}` : "—"}
-            </span>
-            <span className="text-[11px] text-bna-muted">
-              {det ? `${det.ml_lambourdes} ml` : ""}
-            </span>
-          </div>
-          <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
-            <span className="text-[10px] font-bold text-bna-muted uppercase block">Supports & Fixations</span>
-            <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
-              {det ? `${det.nb_plots} plots` : "—"}
-            </span>
-            <span className="text-[11px] text-bna-muted">
-              {det ? `${det.nb_fixations} ${det.type_fixation}` : ""}
-            </span>
-          </div>
-        </div>
-
-        {/* Détails sauvegardés */}
-        <div className="mt-4 space-y-3">
-          {/* Paramètres enregistrés */}
-          <div className="border border-bna-border rounded-2xl p-3 bg-white space-y-2">
-            <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block border-b border-bna-border/50 pb-1">
-              Paramètres enregistrés
-            </span>
-            <Row label="Dimensions" value={det ? `${det.longueur_m} m × ${det.largeur_m} m` : "—"} />
-            <Row label="Sens de pose" value={det?.orientation_lames === "largeur" ? "Largeur" : "Longueur"} />
-            <Row
-              label="Lames (largeur × longueur)"
-              value={det ? `${det.largeur_lame_mm} mm × ${det.longueur_lame_m} m` : "—"}
-            />
-            <Row label="Espace inter-lames" value={det ? `${det.espace_inter_lames_mm} mm` : "—"} />
-            <Row label="Marge chutes" value={det ? `${det.marge_chutes_pct} %` : "—"} />
-            <Row label="Entraxe lambourdes" value={det ? `${det.entraxe_lambourdes_cm} cm` : "—"} />
-            <Row label="Entraxe plots" value={det ? `${det.entraxe_plots_cm} cm` : "—"} />
-            <Row label="Type de fixation" value={det?.type_fixation === "clips" ? "Clips" : "Vis"} />
+            <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
+              <span className="text-[10px] font-bold text-bna-muted uppercase block">Surface nette</span>
+              <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
+                {det ? `${det.surface_m2} m²` : "—"}
+              </span>
+              <span className="text-[11px] text-bna-muted">
+                {det ? `${det.longueur_m} m × ${det.largeur_m} m` : ""}
+              </span>
+            </div>
+            <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
+              <span className="text-[10px] font-bold text-bna-copper uppercase block">Lames</span>
+              <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
+                {det ? `${det.nb_lames}` : "—"}
+              </span>
+              <span className="text-[11px] text-bna-muted">
+                {det ? `lames de ${det.longueur_lame_m} m` : ""}
+              </span>
+            </div>
+            <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
+              <span className="text-[10px] font-bold text-bna-muted uppercase block">Lambourdes</span>
+              <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
+                {det ? `${det.nb_lambourdes}` : "—"}
+              </span>
+              <span className="text-[11px] text-bna-muted">
+                {det ? `${det.ml_lambourdes} ml` : ""}
+              </span>
+            </div>
+            <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
+              <span className="text-[10px] font-bold text-bna-muted uppercase block">Supports & Fixations</span>
+              <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
+                {det ? `${det.nb_plots} plots` : "—"}
+              </span>
+              <span className="text-[11px] text-bna-muted">
+                {det ? `${det.nb_fixations} ${det.type_fixation}` : ""}
+              </span>
+            </div>
           </div>
 
-          {/* Résultats enregistrés */}
-          <div className="border border-bna-border rounded-2xl p-3 bg-white space-y-2">
-            <span className="text-[11px] font-bold tracking-wider text-bna-copper uppercase block border-b border-bna-border/50 pb-1">
-              Résultats enregistrés
-            </span>
-            <Row label="Surface nette" value={det ? `${det.surface_m2} m²` : "—"} />
-            <Row label="Lames commandées" value={det ? `${det.nb_lames} lames` : "—"} />
-            <Row label="Linéaire de lames" value={det ? `${det.ml_lames} ml` : "—"} />
-            <Row label="Barres de lambourdes" value={det ? `${det.nb_lambourdes} barres` : "—"} />
-            <Row label="Linéaire de lambourdes" value={det ? `${det.ml_lambourdes} ml` : "—"} />
-            {res.supports?.plots_lignes_base !== undefined && (
-              <Row label="Plots structure régulière" value={res.supports.plots_lignes_base} />
-            )}
-            {res.supports?.plots_appuis_aboutage !== undefined && (
-              <Row label="Plots appuis d'aboutage" value={res.supports.plots_appuis_aboutage} />
-            )}
-            <Row label="Total plots" value={det ? `${det.nb_plots} plots` : "—"} />
-            <Row
-              label={det?.type_fixation === "clips" ? "Total clips" : "Total vis"}
-              value={det ? `${det.nb_fixations}` : "—"}
-            />
-          </div>
+          {/* Détails sauvegardés */}
+          <div className="mt-4 space-y-3">
+            {/* Paramètres enregistrés */}
+            <div className="border border-bna-border rounded-2xl p-3 bg-white space-y-2">
+              <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block border-b border-bna-border/50 pb-1">
+                Paramètres enregistrés
+              </span>
+              <Row label="Dimensions" value={det ? `${det.longueur_m} m × ${det.largeur_m} m` : "—"} />
+              <Row label="Sens de pose" value={det?.orientation_lames === "largeur" ? "Largeur" : "Longueur"} />
+              <Row
+                label="Lames (largeur × longueur)"
+                value={det ? `${det.largeur_lame_mm} mm × ${det.longueur_lame_m} m` : "—"}
+              />
+              <Row label="Espace inter-lames" value={det ? `${det.espace_inter_lames_mm} mm` : "—"} />
+              <Row label="Marge chutes" value={det ? `${det.marge_chutes_pct} %` : "—"} />
+              <Row label="Entraxe lambourdes" value={det ? `${det.entraxe_lambourdes_cm} cm` : "—"} />
+              <Row label="Entraxe plots" value={det ? `${det.entraxe_plots_cm} cm` : "—"} />
+              <Row label="Type de fixation" value={det?.type_fixation === "clips" ? "Clips" : "Vis"} />
+            </div>
 
-          <p className="text-[10px] text-bna-muted flex items-center gap-1.5 p-2 bg-bna-offwhite rounded-xl border border-bna-border">
-            <ShieldCheck className="w-3.5 h-3.5 text-bna-copper shrink-0" />
-            <span>Valeurs techniques immuables enregistrées dans Supabase sans recalcul.</span>
-          </p>
+            {/* Résultats enregistrés */}
+            <div className="border border-bna-border rounded-2xl p-3 bg-white space-y-2">
+              <span className="text-[11px] font-bold tracking-wider text-bna-copper uppercase block border-b border-bna-border/50 pb-1">
+                Résultats enregistrés
+              </span>
+              <Row label="Surface nette" value={det ? `${det.surface_m2} m²` : "—"} />
+              <Row label="Lames commandées" value={det ? `${det.nb_lames} lames` : "—"} />
+              <Row label="Linéaire de lames" value={det ? `${det.ml_lames} ml` : "—"} />
+              <Row label="Barres de lambourdes" value={det ? `${det.nb_lambourdes} barres` : "—"} />
+              <Row label="Linéaire de lambourdes" value={det ? `${det.ml_lambourdes} ml` : "—"} />
+              {res.supports?.plots_lignes_base !== undefined && (
+                <Row label="Plots structure régulière" value={res.supports.plots_lignes_base} />
+              )}
+              {res.supports?.plots_appuis_aboutage !== undefined && (
+                <Row label="Plots appuis d'aboutage" value={res.supports.plots_appuis_aboutage} />
+              )}
+              <Row label="Total plots" value={det ? `${det.nb_plots} plots` : "—"} />
+              <Row
+                label={det?.type_fixation === "clips" ? "Total clips" : "Total vis"}
+                value={det ? `${det.nb_fixations}` : "—"}
+              />
+            </div>
+
+            <p className="text-[10px] text-bna-muted flex items-center gap-1.5 p-2 bg-bna-offwhite rounded-xl border border-bna-border">
+              <ShieldCheck className="w-3.5 h-3.5 text-bna-copper shrink-0" />
+              <span>Valeurs techniques immuables enregistrées dans Supabase sans recalcul.</span>
+            </p>
+          </div>
         </div>
 
         {/* Actions bas de modal fixes */}
         <div className="shrink-0 p-3 sm:p-4 border-t border-bna-border bg-white flex gap-2">
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             className="flex-1 min-h-[44px] bg-neutral-100 hover:bg-neutral-200 text-bna-anthracite font-semibold text-xs rounded-xl transition-colors active:scale-[0.98]"
           >
             Fermer
           </button>
           {isValid && onNewVersion && (
             <button
-              onClick={() => {
-                onClose();
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
                 onNewVersion();
               }}
               className="flex-1 min-h-[44px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
@@ -198,7 +228,6 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
           )}
         </div>
       </div>
-    </div>
     </div>
   );
 };

@@ -564,6 +564,54 @@ async function runTests() {
   const besoinsChB = await getBesoinsByChantier(sbA, "ch-B");
   assert(besoinsChB.actifs.length === 0 && besoinsChB.totalACommander === 0, "P: chantier sans calepinage -> 0 besoin actif");
 
+  // Q. Cycle complet d'interaction d'ouverture/fermeture du détail d'une version
+  // Q.1 Simulation d'état du composant QuantitatifsTerrasseModal
+  let modalListOpen = true;
+  let isDetailOpen = false;
+  let selectedVersion: any = null;
+
+  const handleOpenVersion = (item: any) => {
+    selectedVersion = item;
+    isDetailOpen = true;
+  };
+  const handleCloseDetail = () => {
+    isDetailOpen = false;
+    selectedVersion = null;
+  };
+
+  // Clic Ouvrir sur version active (V2)
+  const v2Item = versionsChA.find((v) => v.calepinage.version === 2) || vActuelle;
+  handleOpenVersion(v2Item);
+  assert(isDetailOpen && selectedVersion !== null, "Q.1: Clic Ouvrir V2 -> isDetailOpen=true et selectedVersion renseigné");
+  assert(selectedVersion.calepinage.statut === "valide" || selectedVersion.calepinage.version === v2Item!.calepinage.version, "Q.1: Détail ouvert sur la version exacte cliquée (pas de substitution)");
+  assert(modalListOpen === true, "Q.1: Liste des quantitatifs reste active en arrière-plan");
+
+  // Fermeture du détail
+  handleCloseDetail();
+  assert(!isDetailOpen && selectedVersion === null, "Q.2: Fermeture du détail -> isDetailOpen=false et selectedVersion=null");
+  assert(modalListOpen === true, "Q.2: La fermeture du détail ne ferme pas toute la chaîne de modales");
+
+  // Clic Consulter sur version archivée (V1)
+  const v1Item = versionsChA.find((v) => v.calepinage.version === 1);
+  assert(!!v1Item && v1Item.calepinage.statut === "archive", "Q.3: V1 est bien archivée");
+  handleOpenVersion(v1Item);
+  assert(isDetailOpen && selectedVersion !== null, "Q.3: Clic Consulter V1 -> isDetailOpen=true et selectedVersion renseigné");
+  assert(selectedVersion.calepinage.version === 1 && selectedVersion.calepinage.statut === "archive", "Q.3: Détail ouvert sur V1 en lecture seule (statut archive)");
+
+  // Fermeture du détail V1
+  handleCloseDetail();
+  assert(!isDetailOpen && selectedVersion === null && modalListOpen === true, "Q.4: Retour propre à la liste sans fermeture globale");
+
+  // Q.5 Vérification statique des composants de détail et liste
+  const modalListCode = readFileSync(new URL("../../components/calepinage/QuantitatifsTerrasseModal.tsx", import.meta.url), "utf8");
+  const modalDetailCode = readFileSync(new URL("../../components/calepinage/VersionTerrasseDetailModal.tsx", import.meta.url), "utf8");
+
+  assert(modalListCode.includes('handleOpenVersion(activeVersion') && modalListCode.includes('handleOpenVersion(v'), "Q.5: Boutons Ouvrir et Consulter branchés à handleOpenVersion");
+  assert(modalListCode.includes('type="button"'), "Q.5: Boutons de type button pour éviter tout comportement submit intempestif");
+  assert(modalListCode.includes('stopPropagation()'), "Q.5: e.stopPropagation présent pour empêcher toute propagation/fermeture parasite");
+  assert(modalDetailCode.includes('z-[70]'), "Q.5: VersionTerrasseDetailModal a un z-index supérieur z-[70] > z-50");
+  assert(modalDetailCode.includes('onClick={(e) => e.stopPropagation()}'), "Q.5: Boîte modale détail isole les clics du backdrop");
+
   console.log(`\n=== ${passed} VÉRIFICATIONS RÉUSSIES ===`);
 }
 

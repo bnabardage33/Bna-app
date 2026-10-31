@@ -29,8 +29,27 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<CalepinageVersionItem | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const supabase = createClient();
+
+  const handleOpenVersion = (versionItem: CalepinageVersionItem, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setSelectedVersion(versionItem);
+    setIsDetailOpen(true);
+  };
+
+  const handleCloseDetail = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsDetailOpen(false);
+    setSelectedVersion(null);
+  };
 
   const loadVersions = async () => {
     if (!chantierId) return;
@@ -82,6 +101,7 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
               </p>
             </div>
             <button
+              type="button"
               onClick={onClose}
               className="p-2 rounded-full hover:bg-neutral-100 text-bna-muted"
               aria-label="Fermer"
@@ -104,194 +124,198 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
             ) : (
               <>
                 {/* SECTION QUANTITATIF ACTIF */}
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
-                    QUANTITATIF ACTIF
-                  </span>
-                  {activeVersion && (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      VALIDÉE
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
+                      QUANTITATIF ACTIF
                     </span>
-                  )}
-                </div>
+                    {activeVersion && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        VALIDÉE
+                      </span>
+                    )}
+                  </div>
 
-                {activeVersion ? (
-                  <div className="bg-white border-2 border-bna-copper/30 rounded-2xl p-4 shadow-xs relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-16 h-16 bg-bna-copper/5 rounded-bl-full pointer-events-none" />
+                  {activeVersion ? (
+                    <div className="bg-white border-2 border-bna-copper/30 rounded-2xl p-4 shadow-xs relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-bna-copper/5 rounded-bl-full pointer-events-none" />
 
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl font-display font-extrabold text-bna-anthracite">
-                            V{activeVersion.calepinage.version}
-                          </span>
-                          <span className="text-xs font-semibold text-bna-copper">
-                            {activeVersion.details?.surface_m2 ? `${activeVersion.details.surface_m2} m²` : ""}
-                          </span>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl font-display font-extrabold text-bna-anthracite">
+                              V{activeVersion.calepinage.version}
+                            </span>
+                            <span className="text-xs font-semibold text-bna-copper">
+                              {activeVersion.details?.surface_m2 ? `${activeVersion.details.surface_m2} m²` : ""}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-bna-muted flex items-center gap-1 mt-0.5">
+                            <Calendar className="w-3 h-3" />
+                            <span>Créée le {formatDateFr(activeVersion.calepinage.created_at)}</span>
+                          </p>
                         </div>
-                        <p className="text-[11px] text-bna-muted flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3" />
-                          <span>Créée le {formatDateFr(activeVersion.calepinage.created_at)}</span>
-                        </p>
+                      </div>
+
+                      {/* Métriques clés */}
+                      {activeVersion.details && (
+                        <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                          <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
+                            <span className="text-bna-muted text-[10px] block">Platelage</span>
+                            <span className="font-bold text-bna-anthracite">
+                              {activeVersion.details.nb_lames} lames
+                            </span>
+                            <span className="text-[10px] text-bna-muted block">
+                              ({activeVersion.details.longueur_lame_m} m · {activeVersion.details.ml_lames} ml)
+                            </span>
+                          </div>
+                          <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
+                            <span className="text-bna-muted text-[10px] block">Structure</span>
+                            <span className="font-bold text-bna-anthracite">
+                              {activeVersion.details.nb_lambourdes} barres
+                            </span>
+                            <span className="text-[10px] text-bna-muted block">
+                              ({activeVersion.details.ml_lambourdes} ml)
+                            </span>
+                          </div>
+                          <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
+                            <span className="text-bna-muted text-[10px] block">Plots</span>
+                            <span className="font-bold text-bna-anthracite">
+                              {activeVersion.details.nb_plots} plots
+                            </span>
+                            <span className="text-[10px] text-bna-muted block">
+                              entraxe {activeVersion.details.entraxe_plots_cm} cm
+                            </span>
+                          </div>
+                          <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
+                            <span className="text-bna-muted text-[10px] block">Fixations</span>
+                            <span className="font-bold text-bna-anthracite">
+                              {activeVersion.details.nb_fixations}{" "}
+                              {activeVersion.details.type_fixation === "clips" ? "clips" : "vis"}
+                            </span>
+                            <span className="text-[10px] text-bna-muted block capitalize">
+                              {activeVersion.details.type_fixation}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-2 mt-3.5 pt-3 border-t border-bna-border/60">
+                        <button
+                          type="button"
+                          onClick={(e) => handleOpenVersion(activeVersion, e)}
+                          className="flex-1 min-h-[40px] bg-white border border-bna-border hover:bg-neutral-50 text-bna-anthracite font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+                        >
+                          <Eye className="w-4 h-4 text-bna-muted" />
+                          <span>Ouvrir</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onOpenNewVersion();
+                          }}
+                          className="flex-1 min-h-[40px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>+ Nouvelle version</span>
+                        </button>
                       </div>
                     </div>
-
-                    {/* Métriques clés */}
-                    {activeVersion.details && (
-                      <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-                        <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
-                          <span className="text-bna-muted text-[10px] block">Platelage</span>
-                          <span className="font-bold text-bna-anthracite">
-                            {activeVersion.details.nb_lames} lames
-                          </span>
-                          <span className="text-[10px] text-bna-muted block">
-                            ({activeVersion.details.longueur_lame_m} m · {activeVersion.details.ml_lames} ml)
-                          </span>
-                        </div>
-                        <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
-                          <span className="text-bna-muted text-[10px] block">Structure</span>
-                          <span className="font-bold text-bna-anthracite">
-                            {activeVersion.details.nb_lambourdes} barres
-                          </span>
-                          <span className="text-[10px] text-bna-muted block">
-                            ({activeVersion.details.ml_lambourdes} ml)
-                          </span>
-                        </div>
-                        <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
-                          <span className="text-bna-muted text-[10px] block">Plots</span>
-                          <span className="font-bold text-bna-anthracite">
-                            {activeVersion.details.nb_plots} plots
-                          </span>
-                          <span className="text-[10px] text-bna-muted block">
-                            entraxe {activeVersion.details.entraxe_plots_cm} cm
-                          </span>
-                        </div>
-                        <div className="p-2 bg-bna-offwhite rounded-xl border border-bna-border">
-                          <span className="text-bna-muted text-[10px] block">Fixations</span>
-                          <span className="font-bold text-bna-anthracite">
-                            {activeVersion.details.nb_fixations}{" "}
-                            {activeVersion.details.type_fixation === "clips" ? "clips" : "vis"}
-                          </span>
-                          <span className="text-[10px] text-bna-muted block capitalize">
-                            {activeVersion.details.type_fixation}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 mt-3.5 pt-3 border-t border-bna-border/60">
+                  ) : (
+                    <div className="p-5 bg-bna-offwhite rounded-2xl border border-dashed border-bna-border text-center space-y-2">
+                      <Sparkles className="w-6 h-6 text-bna-copper mx-auto" />
+                      <span className="text-xs font-bold text-bna-anthracite block">
+                        Aucun quantitatif actif
+                      </span>
+                      <p className="text-[11px] text-bna-muted max-w-xs mx-auto">
+                        Créez la première version technique déterministe pour ce chantier.
+                      </p>
                       <button
-                        onClick={() => setSelectedVersion(activeVersion)}
-                        className="flex-1 min-h-[40px] bg-white border border-bna-border hover:bg-neutral-50 text-bna-anthracite font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
-                      >
-                        <Eye className="w-4 h-4 text-bna-muted" />
-                        <span>Ouvrir</span>
-                      </button>
-                      <button
+                        type="button"
                         onClick={() => {
                           onClose();
                           onOpenNewVersion();
                         }}
-                        className="flex-1 min-h-[40px] bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
+                        className="mt-2 min-h-[40px] px-4 bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl inline-flex items-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>+ Nouvelle version</span>
+                        <span>+ Créer le quantitatif (V1)</span>
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="p-5 bg-bna-offwhite rounded-2xl border border-dashed border-bna-border text-center space-y-2">
-                    <Sparkles className="w-6 h-6 text-bna-copper mx-auto" />
-                    <span className="text-xs font-bold text-bna-anthracite block">
-                      Aucun quantitatif actif
-                    </span>
-                    <p className="text-[11px] text-bna-muted max-w-xs mx-auto">
-                      Créez la première version technique déterministe pour ce chantier.
-                    </p>
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenNewVersion();
-                      }}
-                      className="mt-2 min-h-[40px] px-4 bg-bna-copper hover:bg-bna-copper-hover text-white font-semibold text-xs rounded-xl inline-flex items-center gap-1.5 shadow-copper transition-colors active:scale-[0.98]"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>+ Créer le quantitatif (V1)</span>
-                    </button>
-                  </div>
-                )}
-              </section>
-
-              {/* SECTION HISTORIQUE */}
-              <section>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
-                    HISTORIQUE ({archivedVersions.length})
-                  </span>
-                  {archivedVersions.length > 0 && (
-                    <span className="text-[10px] text-bna-muted">Lecture seule</span>
                   )}
-                </div>
+                </section>
 
-                {archivedVersions.length === 0 ? (
-                  <p className="text-xs text-bna-muted italic py-2">
-                    Aucune version archivée pour ce chantier.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {archivedVersions.map((v) => (
-                      <div
-                        key={v.calepinage.id}
-                        className="p-3 bg-neutral-50 border border-bna-border/80 rounded-xl flex items-center justify-between hover:bg-neutral-100/70 transition-colors"
-                      >
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-bna-anthracite">
-                              V{v.calepinage.version}
-                            </span>
-                            <span className="text-[9px] font-bold text-neutral-500 bg-neutral-200/60 px-1.5 py-0.2 rounded-sm uppercase">
-                              ARCHIVÉE
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-bna-muted">
-                            {v.details
-                              ? `${v.details.surface_m2} m² · ${v.details.nb_lames} lames · ${v.details.nb_lambourdes} lambourdes`
-                              : "Détails non disponibles"}
-                          </p>
-                          <p className="text-[10px] text-bna-muted/80 flex items-center gap-1">
-                            <Calendar className="w-2.5 h-2.5" />
-                            <span>{formatDateFr(v.calepinage.created_at)}</span>
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setSelectedVersion(v)}
-                          className="min-h-[36px] px-3 bg-white border border-bna-border hover:bg-neutral-50 text-bna-anthracite font-semibold text-xs rounded-lg flex items-center gap-1 shrink-0 transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-bna-muted" />
-                          <span>Consulter</span>
-                        </button>
-                      </div>
-                    ))}
+                {/* SECTION HISTORIQUE */}
+                <section>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
+                      HISTORIQUE ({archivedVersions.length})
+                    </span>
+                    {archivedVersions.length > 0 && (
+                      <span className="text-[10px] text-bna-muted">Lecture seule</span>
+                    )}
                   </div>
-                )}
-              </section>
-            </>
-          )}
+
+                  {archivedVersions.length === 0 ? (
+                    <p className="text-xs text-bna-muted italic py-2">
+                      Aucune version archivée pour ce chantier.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {archivedVersions.map((v) => (
+                        <div
+                          key={v.calepinage.id}
+                          className="p-3 bg-neutral-50 border border-bna-border/80 rounded-xl flex items-center justify-between hover:bg-neutral-100/70 transition-colors"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-bna-anthracite">
+                                V{v.calepinage.version}
+                              </span>
+                              <span className="text-[9px] font-bold text-neutral-500 bg-neutral-200/60 px-1.5 py-0.2 rounded-sm uppercase">
+                                ARCHIVÉE
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-bna-muted">
+                              {v.details
+                                ? `${v.details.surface_m2} m² · ${v.details.nb_lames} lames · ${v.details.nb_lambourdes} lambourdes`
+                                : "Détails non disponibles"}
+                            </p>
+                            <p className="text-[10px] text-bna-muted/80 flex items-center gap-1">
+                              <Calendar className="w-2.5 h-2.5" />
+                              <span>{formatDateFr(v.calepinage.created_at)}</span>
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenVersion(v, e)}
+                            className="min-h-[36px] px-3 bg-white border border-bna-border hover:bg-neutral-50 text-bna-anthracite font-semibold text-xs rounded-lg flex items-center gap-1 shrink-0 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-bna-muted" />
+                            <span>Consulter</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
 
       {/* Modal de consultation détaillée d'une version */}
       <VersionTerrasseDetailModal
-        isOpen={!!selectedVersion}
-        onClose={() => setSelectedVersion(null)}
+        isOpen={isDetailOpen && selectedVersion !== null}
+        onClose={handleCloseDetail}
         versionItem={selectedVersion}
         chantierNom={chantierNom}
         onNewVersion={() => {
-          setSelectedVersion(null);
+          handleCloseDetail();
           onClose();
           onOpenNewVersion();
         }}
