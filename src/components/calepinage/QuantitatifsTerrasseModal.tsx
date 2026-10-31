@@ -59,13 +59,13 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
 
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-50 flex items-start justify-center pt-2 sm:pt-6 pb-20 sm:pb-8 px-3 sm:px-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
         <div
-          className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 shadow-2xl border border-bna-border animate-in slide-in-from-bottom duration-200"
+          className="w-full max-w-mobile bg-white rounded-2xl max-h-full flex flex-col overflow-hidden shadow-2xl border border-bna-border animate-in fade-in zoom-in-95 duration-150"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">
+          {/* Header fixe */}
+          <div className="shrink-0 p-4 sm:p-5 pb-3 border-b border-bna-border/60 bg-white flex items-center justify-between">
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-display font-bold text-base text-bna-anthracite">
@@ -90,18 +90,20 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
             </button>
           </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-xs text-bna-muted animate-pulse">
-              Chargement des quantitatifs...
-            </div>
-          ) : error ? (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-4">
-              {/* SECTION QUANTITATIF ACTIF */}
+          {/* Corps défilant sous le header fixe */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 pt-3 pb-8 space-y-4">
+            {loading ? (
+              <div className="py-12 text-center text-xs text-bna-muted animate-pulse">
+                Chargement des quantitatifs...
+              </div>
+            ) : error ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            ) : (
+              <>
+                {/* SECTION QUANTITATIF ACTIF */}
               <section>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
@@ -276,10 +278,11 @@ export const QuantitatifsTerrasseModal: React.FC<QuantitatifsTerrasseModalProps>
                   </div>
                 )}
               </section>
-            </div>
+            </>
           )}
         </div>
       </div>
+    </div>
 
       {/* Modal de consultation détaillée d'une version */}
       <VersionTerrasseDetailModal

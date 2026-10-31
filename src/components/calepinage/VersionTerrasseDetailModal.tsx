@@ -37,13 +37,13 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
   const res = (det?.resultats || {}) as Record<string, any>;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-60 flex items-start justify-center pt-2 sm:pt-6 pb-20 sm:pb-8 px-3 sm:px-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div
-        className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-2xl max-h-[90vh] overflow-y-auto p-5 shadow-2xl border border-bna-border animate-in slide-in-from-bottom duration-200"
+        className="w-full max-w-mobile bg-white rounded-2xl max-h-full flex flex-col overflow-hidden shadow-2xl border border-bna-border animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">
+        {/* Header fixe */}
+        <div className="shrink-0 p-4 sm:p-5 pb-3 border-b border-bna-border/60 bg-white flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
               <span className="font-display font-bold text-base text-bna-anthracite">
@@ -75,18 +75,20 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
           </button>
         </div>
 
-        {/* Message d'archivage si version archivée */}
-        {!isValid && (
-          <div className="mt-3 p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 flex items-start gap-2">
-            <Archive className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
-            <span>
-              Cette version est archivée et conservée pour l’historique technique. Elle est en lecture seule.
-            </span>
-          </div>
-        )}
+        {/* Corps défilant sous le header fixe */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 pt-3 pb-6 space-y-4">
+          {/* Message d'archivage si version archivée */}
+          {!isValid && (
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 flex items-start gap-2">
+              <Archive className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+              <span>
+                Cette version est archivée et conservée pour l’historique technique. Elle est en lecture seule.
+              </span>
+            </div>
+          )}
 
-        {/* Synthèse principale */}
-        <div className="grid grid-cols-2 gap-2 mt-3">
+          {/* Synthèse principale */}
+          <div className="grid grid-cols-2 gap-2">
           <div className="p-3 bg-bna-offwhite rounded-xl border border-bna-border">
             <span className="text-[10px] font-bold text-bna-muted uppercase block">Surface nette</span>
             <span className="text-lg font-display font-bold text-bna-anthracite mt-0.5 block">
@@ -174,8 +176,8 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
           </p>
         </div>
 
-        {/* Actions bas de modal */}
-        <div className="mt-4 pt-3 border-t border-bna-border flex gap-2">
+        {/* Actions bas de modal fixes */}
+        <div className="shrink-0 p-3 sm:p-4 border-t border-bna-border bg-white flex gap-2">
           <button
             onClick={onClose}
             className="flex-1 min-h-[44px] bg-neutral-100 hover:bg-neutral-200 text-bna-anthracite font-semibold text-xs rounded-xl transition-colors active:scale-[0.98]"
@@ -196,6 +198,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 };
