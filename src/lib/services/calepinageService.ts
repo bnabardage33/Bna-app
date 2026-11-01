@@ -333,8 +333,8 @@ export function construireBesoinsBardage(
         categorie: "panneaux",
         designation:
           params.famille === "hpl"
-            ? `Plaques brutes HPL (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm) — pour ${cal.nbPiecesPosees} modules`
-            : `Cassettes / tôles (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm) — ${cal.nbPiecesPosees} pièces`,
+            ? `Plaques brutes HPL (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm)`
+            : `Cassettes / tôles (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm)`,
         unite: "plaque(s)",
         quantite: cal.nbPlaquesNecessaires,
       });
@@ -357,8 +357,8 @@ export function construireBesoinsBardage(
       categorie: "ossature",
       designation:
         params.famille === "cassette"
-          ? `Montants ossature aluminium 3,00 m (${pose.lineaireChevronsM.toFixed(1)} ml)`
-          : `Chevrons ossature bois 3,00 m (${pose.lineaireChevronsM.toFixed(1)} ml)`,
+          ? "Montants ossature aluminium 3,00 m"
+          : "Chevrons ossature bois 3,00 m",
       unite: "barre(s)",
       quantite: pose.nbSegmentsChevrons,
     });
@@ -432,7 +432,7 @@ export function construireBesoinsBardage(
   if (pose.isolant.actif && pose.isolant.nbPaquetsACommander > 0) {
     besoins.push({
       categorie: "isolant",
-      designation: `Isolant ITE ${pose.isolant.typeIsolant} ép. ${pose.isolant.epaisseurMm} mm (${pose.isolant.surfaceACommanderM2} m²)`,
+      designation: `Isolant ITE ${pose.isolant.typeIsolant} ép. ${pose.isolant.epaisseurMm} mm`,
       unite: "paquet(s)",
       quantite: pose.isolant.nbPaquetsACommander,
     });
@@ -450,6 +450,26 @@ export function construireBesoinsBardage(
 }
 
 /**
+ * Fusionne et additionne les besoins matériaux de plusieurs façades d'un même chantier
+ * (regroupement exact par catégorie + désignation + unité).
+ */
+export function fusionnerBesoinsBardage(listes: BesoinPayload[][]): BesoinPayload[] {
+  const map = new Map<string, BesoinPayload>();
+  for (const liste of listes) {
+    for (const b of liste) {
+      const key = `${b.categorie}||${b.designation}||${b.unite}`;
+      const exist = map.get(key);
+      if (exist) {
+        exist.quantite = Math.round((exist.quantite + b.quantite) * 100) / 100;
+      } else {
+        map.set(key, { ...b });
+      }
+    }
+  }
+  return [...map.values()];
+}
+
+/**
  * Enregistre une version de calepinage Bardage/Façade sur le chantier et génère
  * la liste de ses besoins matériaux dans `besoins_materiaux` (statut `a_commander`),
  * en archivant proprement l'éventuelle version façade précédente et ses besoins non commandés.
@@ -460,15 +480,21 @@ export async function saveCalepinageBardage(
     entrepriseId: string;
     chantierId: string;
     userId?: string | null;
-    cal: ResultatCalepinage | null;
-    pose: ResultatPose;
-    bardageParams: BardageBesoinsParams;
+    cal?: ResultatCalepinage | null;
+    pose?: ResultatPose;
+    bardageParams?: BardageBesoinsParams;
+    besoinsPayloads?: BesoinPayload[];
   }
 ): Promise<{ calepinage: CalepinageRow; besoins: BesoinMateriauRow[]; payloads: BesoinPayload[] }> {
   if (!params.entrepriseId) throw new Error("Entreprise non identifiée : enregistrement refusé");
   if (!params.chantierId) throw new Error("Chantier non identifié : enregistrement refusé");
 
-  const payloads = construireBesoinsBardage(params.cal, params.pose, params.bardageParams);
+  const payloads =
+    params.besoinsPayloads && params.besoinsPayloads.length > 0
+      ? params.besoinsPayloads
+      : params.pose && params.bardageParams
+      ? construireBesoinsBardage(params.cal ?? null, params.pose, params.bardageParams)
+      : [];
   if (payloads.length === 0) {
     throw new Error("Aucun besoin matériau généré : vérifiez les dimensions de la façade");
   }

@@ -2,7 +2,7 @@ import { calculerCalepinage } from "./calepinageCalcul.ts";
 import { decoupageModulesCentres, calculerBesoinsBardage, calculerPose } from "./poseCalcul.ts";
 import { genererPercagesPourModules } from "./percages.ts";
 import { genererModules } from "./modules.ts";
-import { construireBesoinsBardage } from "../services/calepinageService.ts";
+import { construireBesoinsBardage, fusionnerBesoinsBardage } from "../services/calepinageService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -82,5 +82,25 @@ assert(besoinsHpl.some((x) => x.categorie === "ossature" && x.quantite === poseH
 assert(besoinsHpl.some((x) => x.categorie === "equerres"), "besoins HPL : équerres Isolco présentes");
 assert(besoinsHpl.some((x) => x.categorie === "isolant" && x.quantite === poseHpl.isolant.nbPaquetsACommander), "besoins HPL : paquets d'isolant ITE présents");
 assert(besoinsHpl.every((x) => x.quantite > 0 && x.designation.length > 0), "besoins HPL : toutes les lignes ont une quantité > 0");
+
+// 10. Multi-façades : métré indépendant par façade + cumul global automatique
+const posePignon = calculerPose("hpl", 6, 4.5, false, 0, 1000, {
+  moduleLargeurMm: 1000, moduleHauteurMm: 600, sensPose: "horizontal",
+  epaisseurIsolantMm: 120, typeIsolant: "laine_roche",
+});
+const besoinsPignon = construireBesoinsBardage(p, posePignon, {
+  famille: "hpl", largeurM: 6, hauteurM: 4.5, estPignon: true, hauteurFaiteM: 4.5,
+});
+const besoinsCumules = fusionnerBesoinsBardage([besoinsHpl, besoinsPignon]);
+const plaquesCumulees = besoinsCumules.find((x) => x.categorie === "panneaux");
+assert(
+  plaquesCumulees?.quantite === f.nbPlaquesNecessaires + p.nbPlaquesNecessaires,
+  "multi-façades : plaques brutes globales = Façade 1 + Pignon 2"
+);
+const chevronsCumules = besoinsCumules.find((x) => x.categorie === "ossature");
+assert(
+  chevronsCumules?.quantite === poseHpl.nbSegmentsChevrons + posePignon.nbSegmentsChevrons,
+  "multi-façades : chevrons 3m globaux = Façade 1 + Pignon 2"
+);
 
 console.log(`\n${passed} tests OK`);

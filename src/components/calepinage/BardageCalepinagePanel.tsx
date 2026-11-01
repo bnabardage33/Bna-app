@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -14,6 +14,7 @@ import {
   Plus,
   RotateCw,
   Ruler,
+  Trash2,
   Truck,
   Wrench,
 } from "lucide-react";
@@ -22,8 +23,10 @@ import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepina
 import { calculerPose, LABELS_FAMILLE } from "@/lib/bardage/poseCalcul";
 import type { FamillePose, ResultatPose } from "@/lib/bardage/poseCalcul";
 import { genererModules } from "@/lib/bardage/modules";
+import type { CuttingListItem } from "@/lib/bardage/types";
 import {
   construireBesoinsBardage,
+  fusionnerBesoinsBardage,
   saveCalepinageBardage,
 } from "@/lib/services/calepinageService";
 import { createClient } from "@/lib/supabase/client";
@@ -287,6 +290,113 @@ function PleinEcran({ titre, children }: { titre: string; children: (zoom?: numb
   );
 }
 
+export interface FacadeFormState {
+  id: string;
+  nom: string;
+  famille: FamillePose;
+  largeur: string;
+  hauteur: string;
+  pignon: boolean;
+  faite: string;
+  modL: string;
+  modH: string;
+  plqL: string;
+  plqH: string;
+  sens: "horizontal" | "vertical";
+  rotation: boolean;
+  isolant: string;
+}
+
+const DEFAULT_FACADE: FacadeFormState = {
+  id: "facade-1",
+  nom: "Façade Avant",
+  famille: "hpl",
+  largeur: "8,4",
+  hauteur: "3,2",
+  pignon: false,
+  faite: "4,5",
+  modL: "1000",
+  modH: "600",
+  plqL: "3050",
+  plqH: "1300",
+  sens: "horizontal",
+  rotation: false,
+  isolant: "120",
+};
+
+function evaluerFacade(f: FacadeFormState) {
+  const L = num(f.largeur);
+  const Hm = num(f.hauteur);
+  if (L <= 0 || Hm <= 0) {
+    return { id: f.id, nom: f.nom, erreur: "Renseigne largeur et hauteur de la façade." } as const;
+  }
+  const hf = f.pignon ? num(f.faite) : Hm;
+  if (f.pignon && hf <= Hm) {
+    return { id: f.id, nom: f.nom, erreur: "La hauteur au faîtage doit dépasser la hauteur du mur." } as const;
+  }
+  try {
+    const panneau = f.famille === "hpl" || f.famille === "cassette";
+    const mL = num(f.modL, 1000);
+    const mH = num(f.modH, 600);
+    const cal = panneau
+      ? calculerCalepinage({
+          zoneLargeurM: L,
+          zoneHauteurM: Hm,
+          moduleLargeurMm: mL,
+          moduleHauteurMm: mH,
+          plaqueLongueurMm: num(f.plqL, 3050),
+          plaqueLargeurMm: num(f.plqH, 1300),
+          sensPose: f.sens,
+          estPignon: f.pignon,
+          hauteurFaiteM: f.pignon ? hf : null,
+          autoriserRotation: f.rotation,
+        })
+      : null;
+    const pose: ResultatPose = calculerPose(
+      f.famille,
+      L,
+      f.pignon ? hf : Hm,
+      false,
+      0,
+      f.famille === "cassette" ? mL : 135,
+      {
+        moduleLargeurMm: mL,
+        moduleHauteurMm: mH,
+        sensPose: f.sens,
+        epaisseurIsolantMm: num(f.isolant, 0),
+        typeIsolant: num(f.isolant, 0) > 0 ? "laine_roche" : "sans_isolant",
+      }
+    );
+    const modulesGeneres = cal ? genererModules(cal, LABELS_FAMILLE[f.famille]) : null;
+    const besoins = construireBesoinsBardage(cal, pose, {
+      famille: f.famille,
+      largeurM: L,
+      hauteurM: f.pignon ? hf : Hm,
+      estPignon: f.pignon,
+      hauteurFaiteM: f.pignon ? hf : null,
+    });
+    const surfaceM2 = cal ? cal.surfaceZoneM2 : pose.isolant.surfaceNetteM2;
+    return {
+      id: f.id,
+      nom: f.nom,
+      famille: f.famille,
+      cal,
+      pose,
+      L,
+      Hm: f.pignon ? hf : Hm,
+      surfaceM2,
+      modulesGeneres,
+      besoins,
+    } as const;
+  } catch (e) {
+    return {
+      id: f.id,
+      nom: f.nom,
+      erreur: e instanceof Error ? e.message : "Calcul impossible.",
+    } as const;
+  }
+}
+
 export interface BardageCalepinagePanelProps {
   chantierId?: string;
   entrepriseId?: string;
@@ -298,19 +408,12 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
   entrepriseId,
   onSaved,
 }) => {
-  const [famille, setFamille] = useState<FamillePose>("hpl");
-  const [largeur, setLargeur] = useState("8,4");
-  const [hauteur, setHauteur] = useState("3,2");
-  const [pignon, setPignon] = useState(false);
-  const [faite, setFaite] = useState("4,5");
-  const [modL, setModL] = useState("1000");
-  const [modH, setModH] = useState("600");
-  const [plqL, setPlqL] = useState("3050");
-  const [plqH, setPlqH] = useState("1300");
-  const [sens, setSens] = useState<"horizontal" | "vertical">("horizontal");
-  const [rotation, setRotation] = useState(false); // prudence : pas de pivot par défaut (sens de fibre/décor)
-  const [isolant, setIsolant] = useState("120");
+  const storageKey = `bna_bardage_facades_v1_${chantierId || "default"}`;
+  const [facades, setFacades] = useState<FacadeFormState[]>([DEFAULT_FACADE]);
+  const [activeId, setActiveId] = useState<string>(DEFAULT_FACADE.id);
   const [vue, setVue] = useState<Vue>("plan");
+  // Mode d'affichage du métré & débit : 'facade' (indépendant par façade) ou 'global' (cumul de toutes les façades)
+  const [porteeMetre, setPorteeMetre] = useState<"facade" | "global">("facade");
 
   const [copiedDebit, setCopiedDebit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -319,51 +422,156 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
   const [isCommandesOpen, setIsCommandesOpen] = useState(false);
 
   const supabase = createClient();
-  const panneau = famille === "hpl" || famille === "cassette";
 
-  const calcul = useMemo(() => {
-    const L = num(largeur);
-    const Hm = num(hauteur);
-    if (L <= 0 || Hm <= 0) return { erreur: "Renseigne largeur et hauteur de la façade." } as const;
-    const hf = pignon ? num(faite) : Hm;
-    if (pignon && hf <= Hm) return { erreur: "La hauteur au faîtage doit dépasser la hauteur du mur." } as const;
+  // Chargement initial des façades mémorisées pour ce chantier
+  useEffect(() => {
     try {
-      const mL = num(modL, 1000);
-      const mH = num(modH, 600);
-      const cal = panneau
-        ? calculerCalepinage({
-            zoneLargeurM: L, zoneHauteurM: Hm,
-            moduleLargeurMm: mL, moduleHauteurMm: mH,
-            plaqueLongueurMm: num(plqL, 3050), plaqueLargeurMm: num(plqH, 1300),
-            sensPose: sens, estPignon: pignon, hauteurFaiteM: pignon ? hf : null,
-            autoriserRotation: rotation,
-          })
-        : null;
-      const pose: ResultatPose = calculerPose(famille, L, pignon ? hf : Hm, false, 0, famille === "cassette" ? mL : 135, {
-        moduleLargeurMm: mL, moduleHauteurMm: mH, sensPose: sens,
-        epaisseurIsolantMm: num(isolant, 0),
-        typeIsolant: num(isolant, 0) > 0 ? "laine_roche" : "sans_isolant",
-      });
-      const modulesGeneres = cal ? genererModules(cal, LABELS_FAMILLE[famille]) : null;
-      const besoins = construireBesoinsBardage(cal, pose, {
-        famille,
-        largeurM: L,
-        hauteurM: pignon ? hf : Hm,
-        estPignon: pignon,
-        hauteurFaiteM: pignon ? hf : null,
-      });
-      return { cal, pose, L, Hm: pignon ? hf : Hm, modulesGeneres, besoins } as const;
-    } catch (e) {
-      return { erreur: e instanceof Error ? e.message : "Calcul impossible." } as const;
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.id) {
+          setFacades(parsed);
+          setActiveId(parsed[0].id);
+          return;
+        }
+      }
+    } catch {
+      // ignorer
     }
-  }, [famille, largeur, hauteur, pignon, faite, modL, modH, plqL, plqH, sens, rotation, isolant, panneau]);
+    setFacades([DEFAULT_FACADE]);
+    setActiveId(DEFAULT_FACADE.id);
+  }, [storageKey]);
+
+  // Sauvegarde automatique dans localStorage à chaque modification
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(facades));
+    } catch {
+      // ignorer
+    }
+  }, [facades, storageKey]);
+
+  const activeFacade = facades.find((f) => f.id === activeId) || facades[0];
+
+  const updateActive = (patch: Partial<FacadeFormState>) => {
+    setFacades((prev) =>
+      prev.map((f) => (f.id === activeFacade.id ? { ...f, ...patch } : f))
+    );
+  };
+
+  const handleAddFacade = () => {
+    const nextNum = facades.length + 1;
+    const newId = `facade-${Date.now()}`;
+    const nouvelle: FacadeFormState = {
+      ...activeFacade,
+      id: newId,
+      nom: `Façade ${nextNum}`,
+      pignon: false,
+    };
+    setFacades((prev) => [...prev, nouvelle]);
+    setActiveId(newId);
+  };
+
+  const handleDeleteFacade = (idToDelete: string) => {
+    if (facades.length <= 1) return;
+    const remaining = facades.filter((f) => f.id !== idToDelete);
+    setFacades(remaining);
+    if (activeFacade.id === idToDelete) {
+      setActiveId(remaining[0].id);
+    }
+  };
+
+  // Calcul indépendant de chaque façade + cumul global automatique de toutes les façades
+  const resultatsParFacade = useMemo(() => facades.map(evaluerFacade), [facades]);
+  const calcul =
+    resultatsParFacade.find((r) => r.id === activeFacade.id) || resultatsParFacade[0];
+
+  const cumulGlobal = useMemo(() => {
+    const valides = resultatsParFacade.filter(
+      (r): r is Exclude<(typeof resultatsParFacade)[number], { erreur: string }> =>
+        !("erreur" in r)
+    );
+    const surfaceTotaleM2 = valides.reduce((s, r) => s + r.surfaceM2, 0);
+    const nbPiecesTotales = valides.reduce((s, r) => s + (r.cal?.nbPiecesPosees ?? 0), 0);
+    const nbPlaquesTotales = valides.reduce((s, r) => s + (r.cal?.nbPlaquesNecessaires ?? 0), 0);
+    const surfaceAcheteeTotaleM2 = valides.reduce(
+      (s, r) => s + (r.cal?.surfacePlaquesAchetesM2 ?? 0),
+      0
+    );
+    const totalDechetsM2 = valides.reduce((s, r) => s + (r.cal?.totalDechetsPerteM2 ?? 0), 0);
+    const tauxChuteGlobalPct =
+      surfaceAcheteeTotaleM2 > 0 ? (totalDechetsM2 / surfaceAcheteeTotaleM2) * 100 : 0;
+    const chutesReutilisablesM2 = valides.reduce(
+      (s, r) => s + (r.cal?.totalChutesReutilisablesM2 ?? 0),
+      0
+    );
+    const mlChevronsTotal = valides.reduce((s, r) => s + r.pose.lineaireChevronsM, 0);
+    const nbSegmentsChevronsTotal = valides.reduce((s, r) => s + r.pose.nbSegmentsChevrons, 0);
+    const nbEquerresTotal = valides.reduce((s, r) => s + r.pose.nbFixationsTotal, 0);
+    const nbChevillesTotal = valides.reduce((s, r) => s + r.pose.nbChevillesMurales, 0);
+    const nbVisTotal = valides.reduce((s, r) => s + r.pose.nbVis, 0);
+
+    // Regroupement global du bordereau de débit sur toutes les façades
+    const cuttingMap = new Map<string, CuttingListItem>();
+    for (const r of valides) {
+      for (const item of r.modulesGeneres?.cuttingList ?? []) {
+        const key = `${item.width_mm}x${item.height_mm}|${item.material}`;
+        const existing = cuttingMap.get(key);
+        if (existing) {
+          existing.count += item.count;
+          existing.surface_m2 =
+            Math.round(((existing.width_mm * existing.height_mm * existing.count) / 1_000_000) * 1000) /
+            1000;
+        } else {
+          cuttingMap.set(key, {
+            ...item,
+            group_number: `G-${String(cuttingMap.size + 1).padStart(3, "0")}`,
+          });
+        }
+      }
+    }
+
+    const besoinsGlobaux = fusionnerBesoinsBardage(valides.map((r) => r.besoins));
+
+    return {
+      nbFacadesValides: valides.length,
+      valides,
+      surfaceTotaleM2,
+      nbPiecesTotales,
+      nbPlaquesTotales,
+      tauxChuteGlobalPct,
+      chutesReutilisablesM2,
+      mlChevronsTotal,
+      nbSegmentsChevronsTotal,
+      nbEquerresTotal,
+      nbChevillesTotal,
+      nbVisTotal,
+      cuttingListGlobal: [...cuttingMap.values()],
+      besoinsGlobaux,
+    };
+  }, [resultatsParFacade]);
+
+  const panneau = activeFacade.famille === "hpl" || activeFacade.famille === "cassette";
 
   const handleCopyBordereau = async () => {
-    if ("erreur" in calcul || !calcul.modulesGeneres) return;
+    const isGlobal = porteeMetre === "global" && facades.length > 1;
+    const list = isGlobal
+      ? cumulGlobal.cuttingListGlobal
+      : !("erreur" in calcul) && calcul.modulesGeneres
+      ? calcul.modulesGeneres.cuttingList
+      : [];
+    if (list.length === 0) return;
+
     const lines = [
-      `BORDEREAU DE DÉBIT BNA — ${LABELS_FAMILLE[famille]} (${calcul.L} × ${calcul.Hm} m)`,
-      calcul.cal ? `Plaques brutes (${calcul.cal.plaqueBruteLongueurMm}×${calcul.cal.plaqueBruteLargeurMm} mm) : ${calcul.cal.nbPlaquesNecessaires}` : "",
-      ...calcul.modulesGeneres.cuttingList.map(
+      isGlobal
+        ? `BORDEREAU DE DÉBIT GLOBAL BNA — ${cumulGlobal.nbFacadesValides} FAÇADES (${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²)`
+        : `BORDEREAU DE DÉBIT BNA — ${activeFacade.nom} (${LABELS_FAMILLE[activeFacade.famille]})`,
+      isGlobal
+        ? `Total plaques brutes à commander : ${cumulGlobal.nbPlaquesTotales}`
+        : !("erreur" in calcul) && calcul.cal
+        ? `Plaques brutes (${calcul.cal.plaqueBruteLongueurMm}×${calcul.cal.plaqueBruteLargeurMm} mm) : ${calcul.cal.nbPlaquesNecessaires}`
+        : "",
+      ...list.map(
         (g) => `• ${g.group_number} : ${g.count} × ${g.width_mm} × ${g.height_mm} mm (${g.surface_m2.toFixed(2)} m²)`
       ),
     ].filter(Boolean);
@@ -377,7 +585,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
   };
 
   const handleSaveBardage = async () => {
-    if ("erreur" in calcul) return;
+    if (cumulGlobal.besoinsGlobaux.length === 0) return;
     if (!chantierId) {
       setSaveErr("Sélectionne d'abord un chantier en haut de la fenêtre pour enregistrer les besoins.");
       return;
@@ -393,18 +601,10 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
       const res = await saveCalepinageBardage(supabase, {
         entrepriseId,
         chantierId,
-        cal: calcul.cal,
-        pose: calcul.pose,
-        bardageParams: {
-          famille,
-          largeurM: calcul.L,
-          hauteurM: calcul.Hm,
-          estPignon: pignon,
-          hauteurFaiteM: pignon ? calcul.Hm : null,
-        },
+        besoinsPayloads: cumulGlobal.besoinsGlobaux,
       });
       setSaveMsg(
-        `Calepinage Façade V${res.calepinage.version} enregistré (${res.besoins.length} besoins matériaux générés à commander).`
+        `Calepinage Façade V${res.calepinage.version} enregistré : ${cumulGlobal.nbFacadesValides} façade(s) (${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²) · ${res.besoins.length} besoins matériaux générés.`
       );
       if (onSaved) onSaved();
     } catch (e: any) {
@@ -417,53 +617,138 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
   const field = "w-full px-2.5 py-2 text-xs bg-white border border-bna-border rounded-lg focus:outline-none focus:ring-1 focus:ring-bna-copper";
   const lbl = "text-[10px] font-bold uppercase tracking-wider text-bna-muted block mb-1";
 
+  const afficherGlobal = porteeMetre === "global" && facades.length > 1;
+  const besoinsAffiches = afficherGlobal
+    ? cumulGlobal.besoinsGlobaux
+    : !("erreur" in calcul)
+    ? calcul.besoins
+    : [];
+  const cuttingListAffichee = afficherGlobal
+    ? cumulGlobal.cuttingListGlobal
+    : !("erreur" in calcul) && calcul.modulesGeneres
+    ? calcul.modulesGeneres.cuttingList
+    : [];
+
   return (
     <div className="mt-4 space-y-3 animate-in fade-in duration-100">
       <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
         Quantitatif indicatif (DTU 41.2) à vérifier selon le procédé, le support et les prescriptions du fabricant.
       </p>
 
+      {/* BARRE MULTI-FAÇADES : SÉLECTION INDÉPENDANTE + AJOUT + RÉCAP GLOBAL */}
+      <div className="p-2.5 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted block">
+              Façades du chantier ({facades.length})
+            </span>
+            <span className="text-[11px] font-semibold text-bna-anthracite">
+              Cumul : <b>{cumulGlobal.surfaceTotaleM2.toFixed(2)} m²</b>
+              {cumulGlobal.nbPlaquesTotales > 0 ? ` · ${cumulGlobal.nbPlaquesTotales} plaques` : ""}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddFacade}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-bna-copper text-white rounded-lg shadow-xs active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" /> Ajouter une façade
+          </button>
+        </div>
+
+        {/* Onglets des façades */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {facades.map((f, idx) => {
+            const res = resultatsParFacade[idx];
+            const isAct = f.id === activeFacade.id;
+            const surf = res && !("erreur" in res) ? `${res.surfaceM2.toFixed(1)} m²` : "—";
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setActiveId(f.id)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all flex items-center gap-1.5 ${
+                  isAct
+                    ? "bg-white text-bna-copper border-bna-copper shadow-2xs font-bold"
+                    : "bg-neutral-100 text-bna-anthracite border-bna-border hover:bg-white"
+                }`}
+              >
+                <span>{f.nom || `Façade ${idx + 1}`}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-bna-offwhite text-bna-muted">
+                  {surf}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Nom de la façade active & suppression */}
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            className={field}
+            placeholder="Nom de la façade (ex: Façade Nord, Pignon Est...)"
+            value={activeFacade.nom}
+            onChange={(e) => updateActive({ nom: e.target.value })}
+          />
+          {facades.length > 1 && (
+            <button
+              type="button"
+              onClick={() => handleDeleteFacade(activeFacade.id)}
+              className="p-2 text-red-600 bg-white hover:bg-red-50 border border-red-200 rounded-lg shrink-0 active:scale-95"
+              title="Supprimer cette façade"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* FORMULAIRE DE LA FAÇADE SÉLECTIONNÉE */}
       <div className="grid grid-cols-2 gap-2.5">
         <div className="col-span-2">
-          <label className={lbl}>Famille de bardage</label>
-          <select className={field} value={famille} onChange={(e) => setFamille(e.target.value as FamillePose)}>
+          <label className={lbl}>Famille de bardage ({activeFacade.nom})</label>
+          <select
+            className={field}
+            value={activeFacade.famille}
+            onChange={(e) => updateActive({ famille: e.target.value as FamillePose })}
+          >
             {(Object.keys(LABELS_FAMILLE) as FamillePose[]).map((k) => (
               <option key={k} value={k}>{LABELS_FAMILLE[k]}</option>
             ))}
           </select>
         </div>
         <div><label className={lbl}>Largeur façade (m)</label>
-          <input className={field} inputMode="decimal" value={largeur} onChange={(e) => setLargeur(e.target.value)} /></div>
+          <input className={field} inputMode="decimal" value={activeFacade.largeur} onChange={(e) => updateActive({ largeur: e.target.value })} /></div>
         <div><label className={lbl}>Hauteur mur (m)</label>
-          <input className={field} inputMode="decimal" value={hauteur} onChange={(e) => setHauteur(e.target.value)} /></div>
+          <input className={field} inputMode="decimal" value={activeFacade.hauteur} onChange={(e) => updateActive({ hauteur: e.target.value })} /></div>
         <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-bna-anthracite">
-          <input type="checkbox" checked={pignon} onChange={(e) => setPignon(e.target.checked)} /> Pignon (rampants)
+          <input type="checkbox" checked={activeFacade.pignon} onChange={(e) => updateActive({ pignon: e.target.checked })} /> Pignon (rampants)
         </label>
-        {pignon && (
+        {activeFacade.pignon && (
           <div className="col-span-2"><label className={lbl}>Hauteur au faîtage (m)</label>
-            <input className={field} inputMode="decimal" value={faite} onChange={(e) => setFaite(e.target.value)} /></div>
+            <input className={field} inputMode="decimal" value={activeFacade.faite} onChange={(e) => updateActive({ faite: e.target.value })} /></div>
         )}
         {panneau && (
           <>
             <div><label className={lbl}>Module posé — larg. (mm)</label>
-              <input className={field} inputMode="numeric" value={modL} onChange={(e) => setModL(e.target.value)} /></div>
+              <input className={field} inputMode="numeric" value={activeFacade.modL} onChange={(e) => updateActive({ modL: e.target.value })} /></div>
             <div><label className={lbl}>Module posé — haut. (mm)</label>
-              <input className={field} inputMode="numeric" value={modH} onChange={(e) => setModH(e.target.value)} /></div>
+              <input className={field} inputMode="numeric" value={activeFacade.modH} onChange={(e) => updateActive({ modH: e.target.value })} /></div>
             <div><label className={lbl}>Plaque brute — long. (mm)</label>
-              <input className={field} inputMode="numeric" value={plqL} onChange={(e) => setPlqL(e.target.value)} /></div>
+              <input className={field} inputMode="numeric" value={activeFacade.plqL} onChange={(e) => updateActive({ plqL: e.target.value })} /></div>
             <div><label className={lbl}>Plaque brute — larg. (mm)</label>
-              <input className={field} inputMode="numeric" value={plqH} onChange={(e) => setPlqH(e.target.value)} /></div>
+              <input className={field} inputMode="numeric" value={activeFacade.plqH} onChange={(e) => updateActive({ plqH: e.target.value })} /></div>
             <div><label className={lbl}>Sens de pose</label>
-              <select className={field} value={sens} onChange={(e) => setSens(e.target.value as "horizontal" | "vertical")}>
+              <select className={field} value={activeFacade.sens} onChange={(e) => updateActive({ sens: e.target.value as "horizontal" | "vertical" })}>
                 <option value="horizontal">Horizontal</option><option value="vertical">Vertical</option>
               </select></div>
             <label className="flex items-end gap-2 text-[11px] font-semibold text-bna-anthracite pb-2">
-              <input type="checkbox" checked={rotation} onChange={(e) => setRotation(e.target.checked)} /> Pivot 90° autorisé (décor uni)
+              <input type="checkbox" checked={activeFacade.rotation} onChange={(e) => updateActive({ rotation: e.target.checked })} /> Pivot 90° autorisé (décor uni)
             </label>
           </>
         )}
         <div><label className={lbl}>Isolant ITE (mm, 0 = aucun)</label>
-          <input className={field} inputMode="numeric" value={isolant} onChange={(e) => setIsolant(e.target.value)} /></div>
+          <input className={field} inputMode="numeric" value={activeFacade.isolant} onChange={(e) => updateActive({ isolant: e.target.value })} /></div>
       </div>
 
       {"erreur" in calcul ? (
@@ -482,6 +767,34 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
             ))}
           </div>
 
+          {/* SÉLECTEUR DE PORTÉE : MÉTRÉ INDÉPENDANT DE LA FAÇADE vs CUMUL GLOBAL DE TOUTES LES FAÇADES */}
+          {facades.length > 1 && (vue === "metre" || vue === "debit" || !calcul.cal) && (
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-amber-50/80 border border-amber-200 rounded-xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setPorteeMetre("facade")}
+                className={`py-1.5 px-2 rounded-lg truncate transition-all ${
+                  porteeMetre === "facade"
+                    ? "bg-white text-bna-copper shadow-2xs border border-amber-300"
+                    : "text-amber-900/70 hover:text-amber-950"
+                }`}
+              >
+                Métré : {activeFacade.nom}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPorteeMetre("global")}
+                className={`py-1.5 px-2 rounded-lg truncate transition-all ${
+                  porteeMetre === "global"
+                    ? "bg-bna-copper text-white shadow-2xs"
+                    : "text-amber-900/70 hover:text-amber-950"
+                }`}
+              >
+                Cumul Global ({cumulGlobal.nbFacadesValides} façades)
+              </button>
+            </div>
+          )}
+
           {calcul.cal?.piecesIncompatibles && (
             <p className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] text-red-800">
               <b>{calcul.cal.piecesIncompatibles.length} pièce(s) plus grandes que la plaque brute</b> (aucune orientation ne rentre) :
@@ -490,17 +803,19 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
           )}
 
           {vue === "plan" && calcul.cal && (
-            <PleinEcran titre="Plan de calepinage">
+            <PleinEcran titre={`Plan de calepinage — ${activeFacade.nom}`}>
               {(zoom) => <PlanSvg r={calcul.cal!} chevrons={calcul.pose.positionsChevronsM} largeurM={calcul.L} zoom={zoom} />}
             </PleinEcran>
           )}
           {vue === "debit" && calcul.cal && (
             <div className="space-y-3">
-              {calcul.modulesGeneres && (
+              {cuttingListAffichee.length > 0 && (
                 <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted">
-                      Bordereau de débit atelier ({calcul.modulesGeneres.cuttingList.length} formats)
+                      {afficherGlobal
+                        ? `Bordereau Global (${cumulGlobal.nbFacadesValides} façades · ${cuttingListAffichee.length} formats)`
+                        : `Bordereau — ${activeFacade.nom} (${cuttingListAffichee.length} formats)`}
                     </span>
                     <button
                       type="button"
@@ -512,7 +827,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                     </button>
                   </div>
                   <div className="divide-y divide-bna-border/60 text-xs bg-white rounded-lg border border-bna-border overflow-hidden">
-                    {calcul.modulesGeneres.cuttingList.map((g) => (
+                    {cuttingListAffichee.map((g) => (
                       <div key={g.group_number} className="px-2.5 py-1.5 flex items-center justify-between">
                         <div>
                           <span className="font-mono font-bold text-[11px] text-bna-copper mr-2">{g.group_number}</span>
@@ -530,17 +845,53 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 </div>
               )}
 
-              <PleinEcran titre="Plan de débit des plaques">
+              <PleinEcran titre={`Plan de débit des plaques — ${activeFacade.nom}`}>
                 {(zoom) => <DebitSvg r={calcul.cal!} zoom={zoom} />}
               </PleinEcran>
             </div>
           )}
           {(vue === "metre" || !calcul.cal) && (
             <div className="space-y-3 text-xs">
-              {calcul.cal ? (
+              {afficherGlobal ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ["Façades cumulées", `${cumulGlobal.nbFacadesValides} façade(s)`],
+                      ["Surface totale", `${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²`],
+                      ["Pièces totales", `${cumulGlobal.nbPiecesTotales}`],
+                      ["Plaques à commander", `${cumulGlobal.nbPlaquesTotales}`],
+                      ["Chute nette moy.", `${cumulGlobal.tauxChuteGlobalPct.toFixed(1)} %`],
+                      ["Chevrons 3m totaux", `${cumulGlobal.nbSegmentsChevronsTotal} barres (${cumulGlobal.mlChevronsTotal.toFixed(1)} ml)`],
+                    ].map(([k, v]) => (
+                      <div key={k} className="p-2 bg-amber-50/70 border border-amber-200 rounded-lg">
+                        <span className="text-[9px] uppercase font-bold text-amber-900/70 block">{k}</span>
+                        <b className="text-bna-anthracite">{v}</b>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Détail façade par façade dans le cumul global */}
+                  <div className="p-2.5 bg-white border border-bna-border rounded-xl space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted block">
+                      Détail par façade enregistrée
+                    </span>
+                    {cumulGlobal.valides.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-b-0 border-bna-border/50">
+                        <span className="font-semibold text-bna-anthracite">
+                          {r.nom} ({r.L} × {r.Hm} m)
+                        </span>
+                        <span className="text-bna-muted">
+                          <b>{r.surfaceM2.toFixed(2)} m²</b>
+                          {r.cal ? ` · ${r.cal.nbPlaquesNecessaires} plq.` : ""} · {r.pose.nbSegmentsChevrons} chevrons
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : calcul.cal ? (
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    ["Surface façade", `${calcul.cal.surfaceZoneM2.toFixed(2)} m²`],
+                    [`Surface (${activeFacade.nom})`, `${calcul.cal.surfaceZoneM2.toFixed(2)} m²`],
                     ["Pièces posées", `${calcul.cal.nbPiecesPosees}`],
                     ["Plaques à commander", `${calcul.cal.nbPlaquesNecessaires}`],
                     ["Chute nette", `${calcul.cal.tauxChuteNettePct.toFixed(1)} %`],
@@ -555,20 +906,22 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 </div>
               ) : (
                 <p className="p-2 bg-bna-offwhite border border-bna-border rounded-lg text-[11px] text-bna-muted">
-                  Lames ({LABELS_FAMILLE[famille]}) : le plan de plaques ne s&apos;applique pas ; métré d&apos;ossature et de fixations ci-dessous.
+                  Lames ({LABELS_FAMILLE[activeFacade.famille]}) : surface {calcul.surfaceM2.toFixed(2)} m² ; métré d&apos;ossature et de fixations ci-dessous.
                 </p>
               )}
 
-              {/* LISTE DES BESOINS MATÉRIAUX & QUINCAILLERIE POUR COMMANDE FOURNISSEUR */}
+              {/* LISTE DES BESOINS MATÉRIAUX & QUINCAILLERIE (FAÇADE SEULE OU CUMUL GLOBAL) */}
               <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted flex items-center gap-1">
                     <Package className="w-3.5 h-3.5 text-bna-copper" />
-                    Besoins matériaux & quincaillerie ({calcul.besoins.length} postes)
+                    {afficherGlobal
+                      ? `Besoins cumulés — ${cumulGlobal.nbFacadesValides} façades (${besoinsAffiches.length} postes)`
+                      : `Besoins — ${activeFacade.nom} (${besoinsAffiches.length} postes)`}
                   </span>
                 </div>
                 <div className="divide-y divide-bna-border/60 bg-white rounded-lg border border-bna-border overflow-hidden">
-                  {calcul.besoins.map((b, idx) => (
+                  {besoinsAffiches.map((b, idx) => (
                     <div key={idx} className="px-2.5 py-2 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <span className="text-[9px] font-bold uppercase tracking-wider text-bna-copper block">
@@ -586,9 +939,11 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 </div>
               </div>
 
-              <ul className="space-y-1 text-[11px] text-slate-700 list-disc list-inside bg-neutral-50 p-3 rounded-xl border border-bna-border/80">
-                {calcul.pose.remarques.map((t, i) => <li key={i}>{t}</li>)}
-              </ul>
+              {!afficherGlobal && (
+                <ul className="space-y-1 text-[11px] text-slate-700 list-disc list-inside bg-neutral-50 p-3 rounded-xl border border-bna-border/80">
+                  {calcul.pose.remarques.map((t, i) => <li key={i}>{t}</li>)}
+                </ul>
+              )}
             </div>
           )}
 
@@ -605,7 +960,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
             </div>
           )}
 
-          {/* ACTIONS LOT D : ENREGISTRER LES BESOINS & OUVRIR COMMANDES FOURNISSEURS */}
+          {/* ACTIONS LOT D : ENREGISTRER LES BESOINS GLOBAUX & OUVRIR COMMANDES FOURNISSEURS */}
           <div className="space-y-2 pt-1">
             <button
               type="button"
@@ -622,7 +977,9 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 {isSaving
                   ? "Enregistrement en cours..."
                   : chantierId
-                  ? "Enregistrer sur le chantier & Générer les besoins"
+                  ? facades.length > 1
+                    ? `Enregistrer les ${cumulGlobal.nbFacadesValides} façades & Générer les besoins globaux`
+                    : "Enregistrer sur le chantier & Générer les besoins"
                   : "Choisis un chantier en haut pour enregistrer"}
               </span>
             </button>
