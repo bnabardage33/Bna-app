@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { BardageCalepinagePanel } from "./BardageCalepinagePanel";
 import { X, Calculator, CheckCircle2, History, ChevronDown, AlertCircle } from "lucide-react";
 import {
   calculerCalepinageTerrasse,
@@ -801,17 +802,7 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
           </div>
         )}
 
-        {selectedMetier === "facade" && (
-          <div className="mt-4 p-4 bg-bna-offwhite rounded-2xl border border-bna-border text-center space-y-2 animate-in fade-in duration-100">
-            <span className="text-xs font-bold text-bna-anthracite block">Moteur Métier Façade / Bardage</span>
-            <p className="text-[11px] text-bna-muted leading-relaxed">
-              Parcours dédié : Dimensions façade, déduction ouvertures, orientation de pose, ossature bois/métal, profils de départ et fixations.
-            </p>
-            <span className="inline-block text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
-              Module à venir
-            </span>
-          </div>
-        )}
+        {selectedMetier === "facade" && <BardageCalepinagePanel />}
 
         {selectedMetier === "cloture" && (
           <div className="mt-4 p-4 bg-bna-offwhite rounded-2xl border border-bna-border text-center space-y-2 animate-in fade-in duration-100">
