@@ -31,6 +31,7 @@ import {
 import { WeatherIcon } from './WeatherIcon';
 import { WeatherForecastModal } from './WeatherForecastModal';
 import VigilanceModal from './VigilanceModal';
+import { AssistantPosePanel } from './AssistantPosePanel';
 import {
   DepartmentVigilanceReport,
   extractDepartmentCode,
@@ -538,6 +539,15 @@ export const ChantierWeatherCard: React.FC<ChantierWeatherCardProps> = ({
                 <span className="text-[9px] text-bna-muted block">Taux dans l'air</span>
               </div>
             </div>
+
+            {/* ASSISTANT DE POSE BNA (INTELLIGENCE MÉTIER, RÈGLES DTU, HORAIRE CHARNIÈRE) */}
+            {chantier && (
+              <AssistantPosePanel
+                chantier={chantier}
+                weather={weatherData}
+                vigilance={vigilanceData}
+              />
+            )}
 
             {/* BOUTON PRÉVISIONS SEMAINE (7 JOURS) */}
             <button
