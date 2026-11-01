@@ -320,4 +320,34 @@ assert(
   "Attestation Intempérie Bardage : intègre DTU 41.2/45.4 (< 19%), acclimatation 72h et seuils thermiques HPL"
 );
 
+// 14. Règles météo Bardage Bois (DTU 41.2 : humidimètre 13%-18%, pluie rainures/languettes, soleil >30°C, acclimatation 72h, lame d'air 20mm)
+const analyseBoisPluie = analyzePoseConditions("facade", mockPluie, null, "bois");
+assert(
+  analyseBoisPluie.globalStatus === "interruption" &&
+    Boolean(analyseBoisPluie.dilatationJeuConseille?.includes("13 % et 18 %")) &&
+    analyseBoisPluie.pointsCritiques.some((p) => p.includes("rainures et languettes")) &&
+    analyseBoisPluie.recommandationsPose.some((r) => r.includes("72h") && r.includes("bâche plastique hermétique")) &&
+    analyseBoisPluie.recommandationsPose.some((r) => r.includes("20 mm") && r.includes("grilles anti-rongeurs")),
+  "Météo Bardage Bois (Pluie) : interruption + humidimètre 13%-18% + rainures/languettes + acclimatation 72h + lame d'air 20 mm"
+);
+
+const analyseBoisSoleil = analyzePoseConditions("facade", mockChaleur, null, "bois");
+assert(
+  analyseBoisSoleil.globalStatus === "vigilance" &&
+    analyseBoisSoleil.pointsCritiques.some((p) => p.includes("paquets de lames déballés en plein soleil") && p.includes("tuilage")),
+  "Météo Bardage Bois (>= 30°C) : alerte stockage paquets déballés au soleil et risque de tuilage"
+);
+
+const attestBois = generateAttestationIntemperie(
+  { id: "ch-bois", nom: "Chalet Douglas", ville: "Lège-Cap-Ferret", metier: "facade" } as any,
+  mockPluie,
+  null,
+  "bois"
+);
+assert(
+  attestBois.motifPrincipal.includes("13 % et 18 %") &&
+    attestBois.reglementationsBtp.some((r) => r.includes("72h") && r.includes("20 mm")),
+  "Attestation Intempérie Bardage Bois : intègre humidimètre 13%-18%, acclimatation 72h et lame d'air 20 mm (DTU 41.2)"
+);
+
 console.log(`\n${passed} tests OK`);

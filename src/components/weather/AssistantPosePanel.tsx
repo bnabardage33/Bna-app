@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ShieldCheck,
   AlertTriangle,
@@ -19,6 +19,7 @@ import { WeatherData } from '@/lib/services/weatherService';
 import { DepartmentVigilanceReport } from '@/lib/services/meteoFranceService';
 import {
   analyzePoseConditions,
+  FamilleBardageMeteo,
   generateAttestationIntemperie,
   MetierExpertRules,
 } from '@/lib/services/meteoAssistantService';
@@ -37,16 +38,52 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
 }) => {
   const [isAttestationOpen, setIsAttestationOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [familleBardage, setFamilleBardage] = useState<FamilleBardageMeteo>('hpl');
+
+  useEffect(() => {
+    if (!chantier || chantier.metier !== 'facade') return;
+    try {
+      const raw = localStorage.getItem(`bna_bardage_facades_v1_${chantier.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed[0]?.famille === 'bois_naturel') {
+          setFamilleBardage('bois');
+          return;
+        }
+      }
+      const txt = `${chantier.nom || ''} ${(chantier as any).description || ''}`.toLowerCase();
+      if (
+        txt.includes('bois') ||
+        txt.includes('douglas') ||
+        txt.includes('cedar') ||
+        txt.includes('mélèze') ||
+        txt.includes('meleze') ||
+        txt.includes('clin')
+      ) {
+        setFamilleBardage('bois');
+      } else {
+        setFamilleBardage('hpl');
+      }
+    } catch {
+      // ignorer
+    }
+  }, [chantier]);
 
   if (!chantier) return null;
 
   const expertRules: MetierExpertRules = analyzePoseConditions(
     chantier.metier,
     weather,
-    vigilance
+    vigilance,
+    familleBardage
   );
 
-  const attestationData = generateAttestationIntemperie(chantier, weather, vigilance);
+  const attestationData = generateAttestationIntemperie(
+    chantier,
+    weather,
+    vigilance,
+    familleBardage
+  );
 
   return (
     <>
@@ -83,6 +120,34 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
             {expertRules.statusBadge.label}
           </span>
         </div>
+
+        {/* SÉLECTEUR HPL VS BARDAGE BOIS POUR LES CHANTIERS FAÇADE */}
+        {chantier.metier === 'facade' && (
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-800/90 border border-slate-700 rounded-xl text-[11px] font-bold">
+            <button
+              type="button"
+              onClick={() => setFamilleBardage('hpl')}
+              className={`py-1.5 px-2 rounded-lg transition-all ${
+                familleBardage === 'hpl'
+                  ? 'bg-bna-copper text-white shadow-2xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Panneaux HPL / Compact
+            </button>
+            <button
+              type="button"
+              onClick={() => setFamilleBardage('bois')}
+              className={`py-1.5 px-2 rounded-lg transition-all ${
+                familleBardage === 'bois'
+                  ? 'bg-bna-copper text-white shadow-2xs'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Bardage Bois (DTU 41.2)
+            </button>
+          </div>
+        )}
 
         {/* ALERTE CHARNIÈRE DE LA JOURNÉE (MATIN VS APRÈS-MIDI) - TOUJOURS VISIBLE */}
         {expertRules.horaireCharniere ? (
@@ -166,7 +231,9 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
               <div>
                 <b className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
                   {chantier.metier === 'facade'
-                    ? 'Prescriptions Dilatation & Pose HPL (DTU 41.2 / 45.4) :'
+                    ? familleBardage === 'bois'
+                      ? 'Prescriptions Hygrométrie & Pose Bardage Bois (DTU 41.2) :'
+                      : 'Prescriptions Dilatation & Pose HPL (DTU 41.2 / 45.4) :'
                     : "Jeu de dilatation recommandé aujourd'hui (DTU 51.4) :"}
                 </b>
                 <span className="font-bold text-white text-xs">
