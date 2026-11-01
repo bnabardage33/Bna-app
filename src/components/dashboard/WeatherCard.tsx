@@ -25,6 +25,12 @@ import {
 } from "@/lib/services/weatherService";
 import { WeatherIcon } from "../weather/WeatherIcon";
 import { WeatherForecastModal } from "../weather/WeatherForecastModal";
+import VigilanceModal from "../weather/VigilanceModal";
+import {
+  DepartmentVigilanceReport,
+  extractDepartmentCode,
+  VIGILANCE_COLORS,
+} from "@/lib/services/meteoFranceService";
 
 export const WeatherCard: React.FC = () => {
   const [selectedCity, setSelectedCity] = useState<GeoCity>(GENERAC_DEFAULT);
@@ -40,6 +46,11 @@ export const WeatherCard: React.FC = () => {
 
   // Modal prévisions
   const [isForecastModalOpen, setIsForecastModalOpen] = useState<boolean>(false);
+
+  // Vigilance Météo-France
+  const [vigilanceData, setVigilanceData] = useState<DepartmentVigilanceReport | null>(null);
+  const [vigilanceLoading, setVigilanceLoading] = useState<boolean>(false);
+  const [isVigilanceModalOpen, setIsVigilanceModalOpen] = useState<boolean>(false);
 
   // Charger la ville mémorisée dans le navigateur ou Générac par défaut
   useEffect(() => {
@@ -73,9 +84,27 @@ export const WeatherCard: React.FC = () => {
     }
   }, []);
 
+  // Charger les données de vigilance Météo-France
+  const loadVigilance = useCallback(async (city: GeoCity) => {
+    setVigilanceLoading(true);
+    try {
+      const deptCode = extractDepartmentCode(city.postcode, city.admin2 || city.name);
+      const res = await fetch(`/api/weather/vigilance?dept=${deptCode}&postcode=${city.postcode || ''}&name=${encodeURIComponent(city.name || '')}`);
+      if (res.ok) {
+        const data: DepartmentVigilanceReport = await res.json();
+        setVigilanceData(data);
+      }
+    } catch (err) {
+      console.warn("Erreur chargement vigilance :", err);
+    } finally {
+      setVigilanceLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadWeather(selectedCity);
-  }, [selectedCity, loadWeather]);
+    loadVigilance(selectedCity);
+  }, [selectedCity, loadWeather, loadVigilance]);
 
   // Recherche de villes avec debounce
   useEffect(() => {
@@ -114,16 +143,35 @@ export const WeatherCard: React.FC = () => {
   return (
     <>
       <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs space-y-3 transition-shadow hover:shadow-sm">
-        {/* En-tête : Badge météo + Sélecteur de ville */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
+        {/* En-tête : Badge météo + Pastille Vigilance Live 🟢🟡🟠🔴 + Sélecteur de ville */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-bold tracking-wider text-bna-muted uppercase">
-              MÉTÉO CHANTIER
+              MÉTÉO
             </span>
             <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-bna-copper bg-orange-50 border border-orange-200/60 px-2 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               LIVE
             </span>
+
+            {/* Pastille Live Vigilance Météo-France 🟢🟡🟠🔴 */}
+            <button
+              type="button"
+              onClick={() => setIsVigilanceModalOpen(true)}
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-2xs transition-all active:scale-95 ${
+                vigilanceData?.colorMeta
+                  ? `${vigilanceData.colorMeta.badgeBg} ${vigilanceData.colorMeta.badgeBorder} ${vigilanceData.colorMeta.badgeText}`
+                  : "bg-emerald-50 border-emerald-200 text-emerald-700"
+              }`}
+              title="Consulter le bulletin officiel de vigilance Météo-France"
+            >
+              <span className="text-xs">
+                {vigilanceData?.colorMeta ? vigilanceData.colorMeta.emoji : "🟢"}
+              </span>
+              <span className="text-[10px] font-extrabold uppercase">
+                {vigilanceData?.colorMeta ? vigilanceData.colorMeta.name : "Vert"}
+              </span>
+            </button>
           </div>
 
           {/* Bouton changement de ville */}
@@ -305,6 +353,30 @@ export const WeatherCard: React.FC = () => {
               </div>
               <ChevronRight className="w-4 h-4 text-bna-copper transition-transform group-hover:translate-x-0.5" />
             </button>
+
+            {/* Bouton Vigilance Officielle Météo-France (9 phénomènes & chronologie) */}
+            <button
+              type="button"
+              onClick={() => setIsVigilanceModalOpen(true)}
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-between border active:scale-[0.99] shadow-2xs ${
+                vigilanceData?.colorMax && vigilanceData.colorMax > 1
+                  ? `${vigilanceData.colorMeta.badgeBg} ${vigilanceData.colorMeta.badgeBorder} ${vigilanceData.colorMeta.badgeText}`
+                  : "bg-emerald-50/80 hover:bg-emerald-100/90 text-emerald-950 border-emerald-200/80"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base leading-none">
+                  {vigilanceData?.colorMeta ? vigilanceData.colorMeta.emoji : "🟢"}
+                </span>
+                <span className="font-bold">
+                  Vigilance Météo-France · {vigilanceData ? `${vigilanceData.departmentName} (${vigilanceData.department})` : selectedCity.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 font-semibold text-[11px] text-slate-600">
+                <span>{vigilanceData?.colorMeta ? vigilanceData.colorMeta.name : "Vert"}</span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </button>
           </div>
         ) : null}
       </section>
@@ -319,6 +391,14 @@ export const WeatherCard: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         isSearching={isSearching}
+      />
+
+      {/* Modal officiel Vigilance Météo-France */}
+      <VigilanceModal
+        isOpen={isVigilanceModalOpen}
+        onClose={() => setIsVigilanceModalOpen(false)}
+        vigilanceData={vigilanceData}
+        isLoading={vigilanceLoading}
       />
     </>
   );
