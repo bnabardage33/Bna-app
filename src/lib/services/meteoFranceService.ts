@@ -62,8 +62,8 @@ export const VIGILANCE_COLORS: Record<VigilanceLevel, VigilanceColorMeta> = {
 };
 
 export interface AlertTimelapsSlot {
-  beginTime: number; // Unix timestamp en secondes
-  endTime: number;   // Unix timestamp en secondes
+  beginTime: number | string;
+  endTime: number | string;
   colorId: VigilanceLevel;
   beginFormatted: string; // Ex: "06:00" ou "01/11 06:00"
   endFormatted: string;   // Ex: "18:00" ou "01/11 18:00"
@@ -84,9 +84,9 @@ export interface DepartmentVigilanceReport {
   departmentName: string; // Ex: "Gironde"
   colorMax: VigilanceLevel;
   colorMeta: VigilanceColorMeta;
-  updateTime: number;
+  updateTime: number | string;
   updateTimeFormatted: string;
-  endValidityTime?: number;
+  endValidityTime?: number | string;
   endValidityTimeFormatted?: string;
   bulletinSummary: string;
   bulletinTitle?: string;
@@ -130,21 +130,84 @@ interface CacheEntry {
 const vigilanceCache: Map<string, CacheEntry> = new Map();
 const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 
-let cachedSessionToken: { token: string; expiresAt: number } | null = null;
+let cachedOAuthToken: { token: string; expiresAt: number } | null = null;
+let cachedWebSessionToken: { token: string; expiresAt: number } | null = null;
 
 /**
- * Récupère le token ou la clé Météo-France (variable d'environnement METEO_FRANCE_API_KEY ou session auto)
+ * Convertit un timestamp Unix (secondes) ou une date ISO en objet Date valide
  */
-async function getMeteoFranceToken(): Promise<string> {
-  // 1. Si une clé d'API Météo-France est définie dans .env.local
-  if (process.env.METEO_FRANCE_API_KEY) {
-    return process.env.METEO_FRANCE_API_KEY.trim();
+function parseDateInput(input: number | string | undefined): Date | null {
+  if (!input) return null;
+  if (typeof input === 'number') {
+    return new Date(input * 1000);
+  }
+  const parsed = new Date(input);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Formate une date en format français lisible "HH:mm" ou "DD/MM à HH:mm"
+ */
+function formatDateTime(input: number | string | undefined, includeDate = false): string {
+  const date = parseDateInput(input);
+  if (!date) return '';
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  if (!includeDate) {
+    return `${hours}h${minutes}`;
+  }
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${day}/${month} à ${hours}h${minutes}`;
+}
+
+/**
+ * Obtient un token OAuth2 via le portail officiel Météo-France à partir de METEO_FRANCE_API_KEY
+ */
+async function getOAuthTokenFromApiKey(apiKey: string): Promise<string> {
+  const now = Date.now();
+  if (cachedOAuthToken && cachedOAuthToken.expiresAt > now) {
+    return cachedOAuthToken.token;
   }
 
-  // 2. Sinon, récupération automatique de session officielle Météo-France
+  const cleanKey = apiKey.trim();
+  // Si la clé est déjà au format "Basic xxx", l'utiliser directement, sinon préfixer
+  const authHeader = cleanKey.startsWith('Basic ') ? cleanKey : `Basic ${cleanKey}`;
+
+  const tokenRes = await fetch('https://portail-api.meteofrance.fr/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) BnaApp/1.0',
+    },
+    body: 'grant_type=client_credentials',
+    cache: 'no-store',
+  });
+
+  if (!tokenRes.ok) {
+    throw new Error(`Portail Météo-France OAuth2 token error: HTTP ${tokenRes.status}`);
+  }
+
+  const tokenData = await tokenRes.json();
+  const accessToken = tokenData.access_token;
+  const expiresIn = (tokenData.expires_in || 3600) * 1000;
+
+  cachedOAuthToken = {
+    token: accessToken,
+    expiresAt: now + expiresIn - 120000, // 2 minutes de marge
+  };
+
+  return accessToken;
+}
+
+/**
+ * Récupère le token de session web Météo-France via rot13 du cookie mfsession (fallback sans clé)
+ */
+async function getMeteoFranceWebSessionToken(): Promise<string> {
   const now = Date.now();
-  if (cachedSessionToken && cachedSessionToken.expiresAt > now) {
-    return cachedSessionToken.token;
+  if (cachedWebSessionToken && cachedWebSessionToken.expiresAt > now) {
+    return cachedWebSessionToken.token;
   }
 
   const res = await fetch('https://vigilance.meteofrance.fr/fr', {
@@ -155,7 +218,6 @@ async function getMeteoFranceToken(): Promise<string> {
     cache: 'no-store',
   });
 
-  // Récupérer le cookie mfsession
   let mfsession: string | null = null;
   const setCookies = (res.headers as any).getSetCookie ? (res.headers as any).getSetCookie() : [res.headers.get('set-cookie')];
 
@@ -169,38 +231,20 @@ async function getMeteoFranceToken(): Promise<string> {
   }
 
   if (!mfsession) {
-    // Si absent, on utilise un token de fallback générique ou token public
     throw new Error('Impossible de récupérer le cookie mfsession Météo-France');
   }
 
-  // Décodage ROT-13
   const token = mfsession.replace(/[a-zA-Z]/g, (c) => {
     const code = c <= 'Z' ? 65 : 97;
     return String.fromCharCode(code + ((c.charCodeAt(0) - code + 13) % 26));
   });
 
-  cachedSessionToken = {
+  cachedWebSessionToken = {
     token,
-    expiresAt: now + 45 * 60 * 1000, // Token valide 45 minutes
+    expiresAt: now + 45 * 60 * 1000,
   };
 
   return token;
-}
-
-/**
- * Formate un timestamp Unix en format français lisible "HH:mm" ou "DD/MM HH:mm"
- */
-function formatTimestamp(ts: number, includeDate = false): string {
-  if (!ts) return '';
-  const date = new Date(ts * 1000);
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  if (!includeDate) {
-    return `${hours}h${minutes}`;
-  }
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  return `${day}/${month} à ${hours}h${minutes}`;
 }
 
 /**
@@ -210,7 +254,6 @@ export function extractDepartmentCode(postcode?: string, departmentName?: string
   if (postcode) {
     const cleanPc = postcode.trim();
     if (cleanPc.startsWith('20')) {
-      // Corse
       return parseInt(cleanPc, 10) >= 20200 ? '2B' : '2A';
     }
     if (cleanPc.startsWith('97')) {
@@ -235,6 +278,48 @@ export function extractDepartmentCode(postcode?: string, departmentName?: string
 }
 
 /**
+ * Récupère le rapport complet de vigilance via l'API officielle DPVigilance
+ */
+async function fetchOfficialDPVigilance(accessToken: string, normDept: string): Promise<any> {
+  const url = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) BnaApp/1.0',
+    },
+    next: { revalidate: 180 },
+  });
+
+  if (!res.ok) {
+    throw new Error(`DPVigilance HTTP ${res.status}`);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Récupère le rapport complet de vigilance via le proxy web officiel
+ */
+async function fetchWebWarningFull(token: string, normDept: string): Promise<any> {
+  const url = `https://rwg.meteofrance.com/wsft/v3/warning/full?domain=${normDept}&lang=fr&formatDate=timestamp&echeance=J0`;
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json, text/plain, */*',
+    },
+    next: { revalidate: 180 },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Web WarningFull HTTP ${res.status}`);
+  }
+
+  return await res.json();
+}
+
+/**
  * Récupère le rapport complet de vigilance Météo-France pour un département
  */
 export async function getDepartmentVigilance(deptCode: string): Promise<DepartmentVigilanceReport> {
@@ -247,166 +332,176 @@ export async function getDepartmentVigilance(deptCode: string): Promise<Departme
   }
 
   const deptName = FRENCH_DEPARTMENTS[normDept] || `Département ${normDept}`;
+  const apiKey = process.env.METEO_FRANCE_API_KEY?.trim();
 
-  try {
-    const token = await getMeteoFranceToken();
-    const url = `https://rwg.meteofrance.com/wsft/v3/warning/full?domain=${normDept}&lang=fr&formatDate=timestamp&echeance=J0`;
+  let colorMaxId: VigilanceLevel = 1;
+  let updateTimeRaw: number | string = Math.floor(now / 1000);
+  let endValidityRaw: number | string | undefined = undefined;
+  let bulletinSummary = '';
+  let bulletinTitle = '';
+  const rawTimelapsMap = new Map<number, any[]>();
+  const phenomMaxColorMap = new Map<number, VigilanceLevel>();
 
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': token,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json, text/plain, */*',
-      },
-      next: { revalidate: 180 }, // Revalidation 3 minutes
-    });
+  let hasFetched = false;
 
-    if (!res.ok) {
-      throw new Error(`API Météo-France warning/full a retourné le code ${res.status}`);
-    }
+  // 1. TENTATIVE VIA L'API OFFICIELLE DPVigilance (si clé configurée)
+  if (apiKey) {
+    try {
+      const accessToken = await getOAuthTokenFromApiKey(apiKey);
+      const dpData = await fetchOfficialDPVigilance(accessToken, normDept);
 
-    const data = await res.json();
-    const colorMaxId = (data.color_max || 1) as VigilanceLevel;
-    const colorMeta = VIGILANCE_COLORS[colorMaxId] || VIGILANCE_COLORS[1];
+      const periodJ = dpData?.product?.periods?.[0];
+      updateTimeRaw = dpData?.product?.update_time || periodJ?.begin_validity_time || Math.floor(now / 1000);
+      endValidityRaw = periodJ?.end_validity_time;
 
-    // Extraction des timelaps bruts
-    const rawTimelapsMap = new Map<number, any[]>();
-    if (Array.isArray(data.timelaps)) {
-      for (const item of data.timelaps) {
-        const pid = parseInt(item.phenomenon_id, 10);
-        if (Array.isArray(item.timelaps_items)) {
-          rawTimelapsMap.set(pid, item.timelaps_items);
+      const domainList = periodJ?.timelaps?.domain_ids || [];
+      const deptDomain = domainList.find((d: any) => String(d.domain_id).toUpperCase() === normDept);
+
+      if (deptDomain) {
+        colorMaxId = (parseInt(String(deptDomain.max_color_id), 10) || 1) as VigilanceLevel;
+
+        if (Array.isArray(deptDomain.phenomenon_items)) {
+          for (const ph of deptDomain.phenomenon_items) {
+            const pid = parseInt(String(ph.phenomenon_id), 10);
+            const pcolor = (parseInt(String(ph.phenomenon_max_color_id), 10) || 1) as VigilanceLevel;
+            phenomMaxColorMap.set(pid, pcolor);
+
+            if (Array.isArray(ph.timelaps_items)) {
+              rawTimelapsMap.set(pid, ph.timelaps_items);
+            }
+          }
         }
       }
-    }
 
-    // Extraction des couleurs max par phénomène
-    const phenomMaxColorMap = new Map<number, VigilanceLevel>();
-    if (Array.isArray(data.phenomenons_items)) {
-      for (const item of data.phenomenons_items) {
-        const pid = parseInt(item.phenomenon_id, 10);
-        phenomMaxColorMap.set(pid, (item.phenomenon_max_color_id || 1) as VigilanceLevel);
-      }
-    }
-
-    // Construction des 9 phénomènes officiels
-    const phenomena: DepartmentPhenomenonRisk[] = ORDERED_PHENOMENA_IDS.map((pid) => {
-      const officialInfo: PhenomenonOfficialAdvice | undefined = METEO_FRANCE_PHENOMENA[pid];
-      const name = officialInfo?.name || `Phénomène ${pid}`;
-      const colorId = (phenomMaxColorMap.get(pid) || 1) as VigilanceLevel;
-      const phenomColorMeta = VIGILANCE_COLORS[colorId] || VIGILANCE_COLORS[1];
-
-      // Formater la chronologie heure par heure
-      const rawSlots = rawTimelapsMap.get(pid) || [];
-      const timelaps: AlertTimelapsSlot[] = rawSlots.map((slot: any) => ({
-        beginTime: slot.begin_time,
-        endTime: slot.end_time,
-        colorId: (slot.color_id || 1) as VigilanceLevel,
-        beginFormatted: formatTimestamp(slot.begin_time),
-        endFormatted: formatTimestamp(slot.end_time),
-      }));
-
-      // Conséquences et conseils selon le niveau
-      let consequences: string[] = [];
-      let advices: string[] = [];
-
-      if (colorId === 4) {
-        consequences = officialInfo?.consequences_rouge || [];
-        advices = officialInfo?.conseils_rouge || [];
-      } else if (colorId === 3) {
-        consequences = officialInfo?.consequences_orange || [];
-        advices = officialInfo?.conseils_orange || [];
-      } else if (colorId === 2) {
-        consequences = [
-          `Des phénomènes météorologiques habituels mais localement dangereux sont attendus sur le département (${name}).`,
-        ];
-        advices = METEO_FRANCE_DEFAULT_YELLOW_ADVICE;
-      } else {
-        consequences = [];
-        advices = METEO_FRANCE_DEFAULT_GREEN_ADVICE;
+      if (periodJ?.text_items) {
+        bulletinTitle = periodJ.text_items.title || 'Bulletin officiel Météo-France';
+        if (Array.isArray(periodJ.text_items.text)) {
+          bulletinSummary = periodJ.text_items.text.join(' ');
+        } else if (typeof periodJ.text_items.text === 'string') {
+          bulletinSummary = periodJ.text_items.text;
+        }
       }
 
-      return {
-        id: pid,
-        name,
-        colorId,
-        colorMeta: phenomColorMeta,
-        timelaps,
-        consequences,
-        advices,
-      };
-    });
-
-    // Bulletin textuel officiel
-    let bulletinSummary = '';
-    let bulletinTitle = '';
-
-    if (data.comments && Array.isArray(data.comments.text) && data.comments.text.length > 0) {
-      bulletinSummary = data.comments.text.join(' ');
-      bulletinTitle = data.comments.title || 'Bulletin de vigilance Météo-France';
-    } else if (typeof data.text === 'string' && data.text.trim()) {
-      bulletinSummary = data.text.trim();
-    } else {
-      if (colorMaxId === 1) {
-        bulletinSummary = `Pas de vigilance particulière requise sur le département de la ${deptName}. La situation est calme sur l'ensemble du territoire.`;
-      } else if (colorMaxId === 2) {
-        const yellowPhenoms = phenomena.filter(p => p.colorId === 2).map(p => p.name).join(', ');
-        bulletinSummary = `Vigilance Jaune en cours sur la ${deptName} pour le(s) risque(s) suivant(s) : ${yellowPhenoms || 'phénomènes localisés'}. Restez attentif lors de vos déplacements et chantiers extérieurs.`;
-      } else {
-        const severePhenoms = phenomena.filter(p => p.colorId >= 3).map(p => p.name).join(', ');
-        bulletinSummary = `Vigilance ${colorMeta.name.toUpperCase()} en cours sur la ${deptName} pour ${severePhenoms}. Risque météorologique élevé : conformez-vous strictement aux consignes officielles des prévisionnistes.`;
-      }
+      hasFetched = true;
+    } catch (dpError) {
+      console.warn(`[meteoFranceService] DPVigilance avec API key a échoué (${dpError}), tentative de fallback web...`);
     }
-
-    const report: DepartmentVigilanceReport = {
-      department: normDept,
-      departmentName: deptName,
-      colorMax: colorMaxId,
-      colorMeta,
-      updateTime: data.update_time || Math.floor(now / 1000),
-      updateTimeFormatted: formatTimestamp(data.update_time || Math.floor(now / 1000), true),
-      endValidityTime: data.end_validity_time,
-      endValidityTimeFormatted: data.end_validity_time ? formatTimestamp(data.end_validity_time, true) : undefined,
-      bulletinSummary,
-      bulletinTitle,
-      phenomena,
-      isAllGreen: colorMaxId === 1,
-    };
-
-    vigilanceCache.set(normDept, { timestamp: now, data: report });
-    return report;
-  } catch (error) {
-    console.warn(`[meteoFranceService] Erreur lors de la récupération vigilance dept ${normDept}:`, error);
-
-    // Fallback gracieux pour ne jamais bloquer l'UI
-    const defaultColor = VIGILANCE_COLORS[1];
-    const fallbackPhenomena: DepartmentPhenomenonRisk[] = ORDERED_PHENOMENA_IDS.map((pid) => {
-      const officialInfo = METEO_FRANCE_PHENOMENA[pid];
-      return {
-        id: pid,
-        name: officialInfo?.name || `Phénomène ${pid}`,
-        colorId: 1,
-        colorMeta: defaultColor,
-        timelaps: [],
-        consequences: [],
-        advices: METEO_FRANCE_DEFAULT_GREEN_ADVICE,
-      };
-    });
-
-    const fallbackReport: DepartmentVigilanceReport = {
-      department: normDept,
-      departmentName: deptName,
-      colorMax: 1,
-      colorMeta: defaultColor,
-      updateTime: Math.floor(now / 1000),
-      updateTimeFormatted: formatTimestamp(Math.floor(now / 1000), true),
-      bulletinSummary: `Pas de vigilance particulière sur le département ${deptName}. (Données réactualisées en temps réel)`,
-      bulletinTitle: 'Vigilance Météo-France',
-      phenomena: fallbackPhenomena,
-      isAllGreen: true,
-    };
-
-    return fallbackReport;
   }
+
+  // 2. FALLBACK OU MODE SANS CLÉ VIA LA PASSERELLE WEB MÉTÉO-FRANCE
+  if (!hasFetched) {
+    try {
+      const webToken = await getMeteoFranceWebSessionToken();
+      const webData = await fetchWebWarningFull(webToken, normDept);
+
+      colorMaxId = (webData.color_max || 1) as VigilanceLevel;
+      updateTimeRaw = webData.update_time || Math.floor(now / 1000);
+      endValidityRaw = webData.end_validity_time;
+
+      if (Array.isArray(webData.timelaps)) {
+        for (const item of webData.timelaps) {
+          const pid = parseInt(String(item.phenomenon_id), 10);
+          if (Array.isArray(item.timelaps_items)) {
+            rawTimelapsMap.set(pid, item.timelaps_items);
+          }
+        }
+      }
+
+      if (Array.isArray(webData.phenomenons_items)) {
+        for (const item of webData.phenomenons_items) {
+          const pid = parseInt(String(item.phenomenon_id), 10);
+          phenomMaxColorMap.set(pid, (item.phenomenon_max_color_id || 1) as VigilanceLevel);
+        }
+      }
+
+      if (webData.comments && Array.isArray(webData.comments.text) && webData.comments.text.length > 0) {
+        bulletinSummary = webData.comments.text.join(' ');
+        bulletinTitle = webData.comments.title || 'Bulletin officiel Météo-France';
+      } else if (typeof webData.text === 'string' && webData.text.trim()) {
+        bulletinSummary = webData.text.trim();
+      }
+
+      hasFetched = true;
+    } catch (webError) {
+      console.warn(`[meteoFranceService] Erreur fallback web Météo-France :`, webError);
+    }
+  }
+
+  const colorMeta = VIGILANCE_COLORS[colorMaxId] || VIGILANCE_COLORS[1];
+
+  // Construction des 9 phénomènes officiels demandés
+  const phenomena: DepartmentPhenomenonRisk[] = ORDERED_PHENOMENA_IDS.map((pid) => {
+    const officialInfo: PhenomenonOfficialAdvice | undefined = METEO_FRANCE_PHENOMENA[pid];
+    const name = officialInfo?.name || `Phénomène ${pid}`;
+    const colorId = (phenomMaxColorMap.get(pid) || 1) as VigilanceLevel;
+    const phenomColorMeta = VIGILANCE_COLORS[colorId] || VIGILANCE_COLORS[1];
+
+    const rawSlots = rawTimelapsMap.get(pid) || [];
+    const timelaps: AlertTimelapsSlot[] = rawSlots.map((slot: any) => ({
+      beginTime: slot.begin_time,
+      endTime: slot.end_time,
+      colorId: (parseInt(String(slot.color_id), 10) || 1) as VigilanceLevel,
+      beginFormatted: formatDateTime(slot.begin_time),
+      endFormatted: formatDateTime(slot.end_time),
+    }));
+
+    let consequences: string[] = [];
+    let advices: string[] = [];
+
+    if (colorId === 4) {
+      consequences = officialInfo?.consequences_rouge || [];
+      advices = officialInfo?.conseils_rouge || [];
+    } else if (colorId === 3) {
+      consequences = officialInfo?.consequences_orange || [];
+      advices = officialInfo?.conseils_orange || [];
+    } else if (colorId === 2) {
+      consequences = [
+        `Des phénomènes météorologiques habituels mais localement dangereux sont attendus sur le département (${name}).`,
+      ];
+      advices = METEO_FRANCE_DEFAULT_YELLOW_ADVICE;
+    } else {
+      consequences = [];
+      advices = METEO_FRANCE_DEFAULT_GREEN_ADVICE;
+    }
+
+    return {
+      id: pid,
+      name,
+      colorId,
+      colorMeta: phenomColorMeta,
+      timelaps,
+      consequences,
+      advices,
+    };
+  });
+
+  if (!bulletinSummary) {
+    if (colorMaxId === 1) {
+      bulletinSummary = `Pas de vigilance particulière sur le département de la ${deptName}. La situation est calme sur l'ensemble du territoire.`;
+    } else if (colorMaxId === 2) {
+      const yellowPhenoms = phenomena.filter((p) => p.colorId === 2).map((p) => p.name).join(', ');
+      bulletinSummary = `Vigilance Jaune en cours sur la ${deptName} pour le(s) risque(s) suivant(s) : ${yellowPhenoms || 'phénomènes localisés'}. Restez attentif lors de vos déplacements et chantiers extérieurs.`;
+    } else {
+      const severePhenoms = phenomena.filter((p) => p.colorId >= 3).map((p) => p.name).join(', ');
+      bulletinSummary = `Vigilance ${colorMeta.name.toUpperCase()} en cours sur la ${deptName} pour ${severePhenoms}. Risque météorologique élevé : conformez-vous strictement aux consignes officielles des prévisionnistes.`;
+    }
+  }
+
+  const report: DepartmentVigilanceReport = {
+    department: normDept,
+    departmentName: deptName,
+    colorMax: colorMaxId,
+    colorMeta,
+    updateTime: updateTimeRaw,
+    updateTimeFormatted: formatDateTime(updateTimeRaw, true),
+    endValidityTime: endValidityRaw,
+    endValidityTimeFormatted: endValidityRaw ? formatDateTime(endValidityRaw, true) : undefined,
+    bulletinSummary,
+    bulletinTitle,
+    phenomena,
+    isAllGreen: colorMaxId === 1,
+  };
+
+  vigilanceCache.set(normDept, { timestamp: now, data: report });
+  return report;
 }
