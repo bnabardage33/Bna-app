@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Box,
   Check,
   CheckCircle2,
   Copy,
@@ -22,6 +23,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { BardagePlan3D } from "./BardagePlan3D";
 import { calculerCalepinage } from "@/lib/bardage/calepinageCalcul";
 import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepinageCalcul";
 import { calculerPose, LABELS_FAMILLE } from "@/lib/bardage/poseCalcul";
@@ -41,7 +43,7 @@ import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommand
 // V1 bardage : formulaire -> UN SEUL calcul (calculerCalepinage / calculerPose)
 // -> plan, débit, métré et exports PDF/CSV lisent tous cette même sortie (aucun recalcul dans l'UI).
 
-type Vue = "plan" | "debit" | "metre";
+type Vue = "plan" | "3d" | "debit" | "metre";
 
 const num = (v: string, def = 0) => {
   const n = parseFloat(String(v ?? "").replace(",", "."));
@@ -1205,10 +1207,10 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-bna-offwhite rounded-xl border border-bna-border text-xs font-semibold">
-            {([["plan", "Plan", Layers], ["debit", "Débit", Ruler], ["metre", "Métré & Cmd", Wrench]] as const).map(([k, label, Icon]) => (
+          <div className="grid grid-cols-4 gap-1 p-1 bg-bna-offwhite rounded-xl border border-bna-border text-[11px] font-semibold">
+            {([["plan", "Plan 2D", Layers], ["3d", "Plan 3D", Box], ["debit", "Débit", Ruler], ["metre", "Métré", Wrench]] as const).map(([k, label, Icon]) => (
               <button key={k} type="button" onClick={() => setVue(k)}
-                disabled={!calcul.cal && k !== "metre"}
+                disabled={!calcul.cal && k !== "metre" && k !== "3d"}
                 className={`py-2 rounded-lg flex items-center justify-center gap-1 disabled:opacity-40 ${vue === k ? "bg-white shadow-xs border border-bna-border text-bna-anthracite" : "text-bna-muted"}`}>
                 <Icon className="w-3.5 h-3.5" />{label}
               </button>
@@ -1276,6 +1278,17 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 )}
               </PleinEcran>
             </div>
+          )}
+          {vue === "3d" && (
+            <PleinEcran titre={`Maquette 3D Interactive — ${activeFacade.nom}`}>
+              {(zoom) => (
+                <BardagePlan3D
+                  activeFacade={calcul}
+                  allFacades={cumulGlobal.valides}
+                  zoom={zoom}
+                />
+              )}
+            </PleinEcran>
           )}
           {vue === "debit" && calcul.cal && (
             <div className="space-y-3">
