@@ -37,8 +37,8 @@ export default function HomePage() {
   const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
   const [isCorbeilleOpen, setIsCorbeilleOpen] = useState(false);
 
-  const [chantiers, setChantiers] = useState<Chantier[]>(Object.values(MOCK_CHANTIERS));
-  const [activeChantierId, setActiveChantierId] = useState<string>("martin");
+  const [chantiers, setChantiers] = useState<Chantier[]>([]);
+  const [activeChantierId, setActiveChantierId] = useState<string>("");
   const [cockpitRefreshKey, setCockpitRefreshKey] = useState(0);
 
   const supabase = createClient();
@@ -49,8 +49,12 @@ export default function HomePage() {
       fallbackToMocks: !user,
     });
     setChantiers(list);
-    if (list.length > 0 && !list.find((c) => c.id === activeChantierId)) {
-      setActiveChantierId(list[0].id);
+    if (list.length > 0) {
+      if (!list.find((c) => c.id === activeChantierId)) {
+        setActiveChantierId(list[0].id);
+      }
+    } else {
+      setActiveChantierId("");
     }
   };
 
@@ -61,11 +65,11 @@ export default function HomePage() {
   const handleSoftDeleteChantier = async (chantierId: string) => {
     try {
       if (!isUuid(chantierId)) {
-        // Mock chantier ("martin", "dupont", "bernard") : suppression locale en mémoire
+        // Mock chantier ("martin", "dupont", "bernard") : suppression locale immédiate
         setChantiers((prev) => {
           const filtered = prev.filter((c) => c.id !== chantierId);
-          if (activeChantierId === chantierId && filtered.length > 0) {
-            setActiveChantierId(filtered[0].id);
+          if (activeChantierId === chantierId) {
+            setActiveChantierId(filtered.length > 0 ? filtered[0].id : "");
           }
           return filtered;
         });
@@ -81,7 +85,7 @@ export default function HomePage() {
   const currentChantier =
     chantiers.find((c) => c.id === activeChantierId) ||
     chantiers[0] ||
-    MOCK_CHANTIERS.martin;
+    null;
 
   const displayName = profil?.prenom || (user?.email ? user.email.split("@")[0] : "");
 
@@ -100,12 +104,22 @@ export default function HomePage() {
             <WeatherCard />
             <TaskListCard />
             <FeaturedProjectCard
+              chantier={currentChantier}
               onOpenCockpit={() => {
-                setActiveChantierId(currentChantier.id);
+                if (currentChantier) {
+                  setActiveChantierId(currentChantier.id);
+                  setCurrentTab("cockpit");
+                }
+              }}
+              onNewChantier={() => setIsNewChantierOpen(true)}
+            />
+            <RiskProjectsCard
+              chantiers={chantiers}
+              onSelectChantier={(id) => {
+                setActiveChantierId(id);
                 setCurrentTab("cockpit");
               }}
             />
-            <RiskProjectsCard />
             <QuickLinksCard />
           </div>
         )}

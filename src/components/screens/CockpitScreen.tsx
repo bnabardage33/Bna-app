@@ -30,7 +30,7 @@ import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsT
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 
 interface CockpitScreenProps {
-  chantier?: Chantier;
+  chantier?: Chantier | null;
   onBack: () => void;
   onOpenCalepinage: (sourceVersion?: CalepinageVersionItem | null) => void;
   onSoftDelete?: (chantierId: string) => void;
@@ -38,12 +38,26 @@ interface CockpitScreenProps {
 }
 
 export const CockpitScreen: React.FC<CockpitScreenProps> = ({
-  chantier = MOCK_CHANTIERS.martin,
+  chantier,
   onBack,
   onOpenCalepinage,
   onSoftDelete,
   refreshKey = 0,
 }) => {
+  if (!chantier) {
+    return (
+      <div className="py-12 text-center space-y-3">
+        <p className="text-sm font-semibold text-bna-anthracite">Aucun chantier sélectionné</p>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-bna-copper hover:bg-bna-copper-hover text-white text-xs font-bold rounded-xl transition-colors"
+        >
+          Retour aux chantiers
+        </button>
+      </div>
+    );
+  }
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const metierConfig = METIERS_CONFIG[chantier.metier];

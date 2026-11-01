@@ -16,17 +16,26 @@ import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 
 interface TerrainScreenProps {
-  chantier?: Chantier;
+  chantier?: Chantier | null;
   onOpenCalepinage: () => void;
   onOpenCockpit: () => void;
   onSelectChantier?: (id: string) => void;
 }
 
 export const TerrainScreen: React.FC<TerrainScreenProps> = ({
-  chantier = MOCK_CHANTIERS.martin,
+  chantier,
   onOpenCalepinage,
   onOpenCockpit,
 }) => {
+  if (!chantier) {
+    return (
+      <div className="py-12 text-center space-y-3 bg-white rounded-2xl border border-bna-border p-6 mt-3">
+        <p className="text-sm font-semibold text-bna-anthracite">Aucun chantier actif sur le terrain</p>
+        <p className="text-xs text-bna-muted">Veuillez créer ou sélectionner un chantier depuis l'onglet Chantiers.</p>
+      </div>
+    );
+  }
+
   const metierConfig = METIERS_CONFIG[chantier.metier];
 
   return (

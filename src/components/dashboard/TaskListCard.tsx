@@ -14,12 +14,12 @@ const initialTasks: Task[] = [
   {
     id: "1",
     title: "Confirmer la livraison",
-    subtext: "Martin · avant 10 h",
+    subtext: "Priorité haute · avant 10 h",
     done: false,
   },
   {
     id: "2",
-    title: "Relancer le devis Dupont",
+    title: "Relancer devis en attente",
     subtext: "Aujourd’hui",
     done: false,
   },
