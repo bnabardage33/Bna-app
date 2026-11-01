@@ -8,6 +8,10 @@ import {
   saveCalepinageBardage,
   getLatestCalepinageBardage,
 } from "../services/calepinageService.ts";
+import {
+  analyzePoseConditions,
+  generateAttestationIntemperie,
+} from "../services/meteoAssistantService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -255,5 +259,65 @@ async function testPersistanceBardage() {
 }
 
 await testPersistanceBardage();
+
+// 13. Règles météo HPL / Bardage (DTU 41.2 / DTU 45.4 / Polyrey)
+const mockFroid: any = {
+  current: { temperature_2m: 2, precipitation: 0, wind_speed_10m: 10, relative_humidity_2m: 65 },
+  daily: [{ temperature_2m_min: 1, temperature_2m_max: 4, precipitation_sum: 0, wind_gusts_10m_max: 15, hourly: [] }],
+};
+const analyseFroid = analyzePoseConditions("facade", mockFroid, null);
+assert(
+  analyseFroid.globalStatus === "interruption" &&
+    analyseFroid.pointsCritiques.some((p) => p.includes("cassant") && p.includes("5°C")) &&
+    analyseFroid.pointsCritiques.some((p) => p.includes("EPDM")),
+  "Météo HPL (< 5°C) : interruption de pose + alertes fissuration perçage et non-adhérence EPDM/colles"
+);
+
+const mockFraisPolyrey: any = {
+  current: { temperature_2m: 8, precipitation: 0, wind_speed_10m: 10, relative_humidity_2m: 60 },
+  daily: [{ temperature_2m_min: 7, temperature_2m_max: 11, precipitation_sum: 0, wind_gusts_10m_max: 15, hourly: [] }],
+};
+const analyseFrais = analyzePoseConditions("facade", mockFraisPolyrey, null);
+assert(
+  analyseFrais.globalStatus === "vigilance" &&
+    analyseFrais.pointsCritiques.some((p) => p.includes("Polyrey") && p.includes("5 heures")),
+  "Météo HPL (5°C-10°C) : vigilance + rappel du seuil contractuel 10°C pendant 5h (Polyrey)"
+);
+
+const mockChaleur: any = {
+  current: { temperature_2m: 36, precipitation: 0, wind_speed_10m: 10, relative_humidity_2m: 40 },
+  daily: [{ temperature_2m_min: 22, temperature_2m_max: 36, precipitation_sum: 0, wind_gusts_10m_max: 15, hourly: [] }],
+};
+const analyseChaleur = analyzePoseConditions("facade", mockChaleur, null);
+assert(
+  analyseChaleur.globalStatus === "interruption" &&
+    analyseChaleur.pointsCritiques.some((p) => p.includes("cisaillement") && p.includes("bombement")),
+  "Météo HPL (>= 35°C) : interruption forte chaleur + alerte dilatation maximale / cisaillement au retrait hivernal"
+);
+
+const mockPluie: any = {
+  current: { temperature_2m: 15, precipitation: 1.8, wind_speed_10m: 20, relative_humidity_2m: 92 },
+  daily: [{ temperature_2m_min: 12, temperature_2m_max: 16, precipitation_sum: 6.5, wind_gusts_10m_max: 30, hourly: [] }],
+};
+const analysePluie = analyzePoseConditions("facade", mockPluie, null);
+assert(
+  analysePluie.globalStatus === "interruption" &&
+    analysePluie.pointsCritiques.some((p) => p.includes("19 %") && p.includes("DTU 45.4")) &&
+    analysePluie.pointsCritiques.some((p) => p.includes("3 jours")) &&
+    analysePluie.pointsCritiques.some((p) => p.includes("bâcher")),
+  "Météo HPL (Pluie/Humidité) : interdiction + humidité bois < 19% (DTU 41.2/45.4) + acclimatation 3j + pare-pluie/bâchage"
+);
+
+const attestPluie = generateAttestationIntemperie(
+  { id: "ch-test", nom: "Résidence Pinède", ville: "Arcachon", metier: "facade" } as any,
+  mockPluie,
+  null
+);
+assert(
+  attestPluie.motifPrincipal.includes("19 %") &&
+    attestPluie.reglementationsBtp.some((r) => r.includes("DTU 45.4")) &&
+    attestPluie.reglementationsBtp.some((r) => r.includes("Polyrey")),
+  "Attestation Intempérie Bardage : intègre DTU 41.2/45.4 (< 19%), acclimatation 72h et seuils thermiques HPL"
+);
 
 console.log(`\n${passed} tests OK`);

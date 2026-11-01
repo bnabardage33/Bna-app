@@ -1,6 +1,6 @@
-import { DailyForecastDay, WeatherData } from './weatherService';
-import { DepartmentVigilanceReport } from './meteoFranceService';
-import { MetierType, Chantier } from '@/types/metier';
+import type { DailyForecastDay, WeatherData } from './weatherService';
+import type { DepartmentVigilanceReport } from './meteoFranceService';
+import type { MetierType, Chantier } from '@/types/metier';
 
 export type PoseStatus = 'favorable' | 'vigilance' | 'interruption';
 
@@ -60,7 +60,10 @@ export interface AttestationIntemperie {
 /**
  * Analyse heure par heure entre 07h et 19h pour dégager les fenêtres d'action
  */
-export function computeDailyTimeSlots(todayForecast: DailyForecastDay): TimeSlotWindow[] {
+export function computeDailyTimeSlots(
+  todayForecast: DailyForecastDay,
+  metier: MetierType = 'terrasse'
+): TimeSlotWindow[] {
   if (!todayForecast?.hourly || todayForecast.hourly.length === 0) {
     return [];
   }
@@ -72,7 +75,36 @@ export function computeDailyTimeSlots(todayForecast: DailyForecastDay): TimeSlot
   let currentGroup: typeof workHours = [];
   let currentStatus: PoseStatus | null = null;
 
-  function evaluateHourStatus(h: (typeof workHours)[0]): PoseStatus {
+  function evaluateHourStatus(h: (typeof workHours)[0], idx: number): PoseStatus {
+    if (metier === 'facade') {
+      // Bardage HPL / DTU 41.2 & 45.4 :
+      // - Interdiction grand froid < 5°C (fissuration au perçage + perte adhérence EPDM/colles)
+      // - Interdiction forte chaleur >= 35°C (dilatation maximale HPL -> cisaillement au retrait hivernal)
+      // - Interdiction pluie soutenue >= 1.0 mm ou vent >= 50 km/h (R408)
+      if (
+        h.precipitation >= 1.0 ||
+        h.wind_gusts_10m >= 50 ||
+        h.temperature_2m < 5 ||
+        h.temperature_2m >= 35
+      ) {
+        return 'interruption';
+      }
+      // Vérification de la règle des 5 heures suivantes >= 10°C (prescriptions type Polyrey / pose collée)
+      const next5Hours = todayForecast.hourly.slice(idx, idx + 6);
+      const dropsBelow10In5h = next5Hours.some((nh) => nh.temperature_2m < 10);
+
+      if (
+        h.precipitation > 0.1 ||
+        h.wind_gusts_10m >= 35 ||
+        h.temperature_2m < 10 ||
+        dropsBelow10In5h ||
+        h.temperature_2m >= 30
+      ) {
+        return 'vigilance';
+      }
+      return 'favorable';
+    }
+
     if (h.precipitation >= 1.5 || h.wind_gusts_10m >= 55 || h.temperature_2m <= 1) {
       return 'interruption';
     }
@@ -82,8 +114,9 @@ export function computeDailyTimeSlots(todayForecast: DailyForecastDay): TimeSlot
     return 'favorable';
   }
 
-  for (const h of workHours) {
-    const status = evaluateHourStatus(h);
+  for (let i = 0; i < workHours.length; i++) {
+    const h = workHours[i];
+    const status = evaluateHourStatus(h, i);
     if (currentStatus === null) {
       currentStatus = status;
       currentGroup = [h];
@@ -91,20 +124,24 @@ export function computeDailyTimeSlots(todayForecast: DailyForecastDay): TimeSlot
       currentGroup.push(h);
     } else {
       // Clôturer le créneau précédent
-      slots.push(buildSlot(currentGroup, currentStatus));
+      slots.push(buildSlot(currentGroup, currentStatus, metier));
       currentStatus = status;
       currentGroup = [h];
     }
   }
 
   if (currentGroup.length > 0 && currentStatus !== null) {
-    slots.push(buildSlot(currentGroup, currentStatus));
+    slots.push(buildSlot(currentGroup, currentStatus, metier));
   }
 
   return slots;
 }
 
-function buildSlot(group: DailyForecastDay['hourly'], status: PoseStatus): TimeSlotWindow {
+function buildSlot(
+  group: DailyForecastDay['hourly'],
+  status: PoseStatus,
+  metier: MetierType = 'terrasse'
+): TimeSlotWindow {
   const startH = group[0].hour;
   const endH = group[group.length - 1].hour + 1;
   const precipTotal = Math.round(group.reduce((acc, h) => acc + h.precipitation, 0) * 10) / 10;
@@ -116,22 +153,44 @@ function buildSlot(group: DailyForecastDay['hourly'], status: PoseStatus): TimeS
 
   if (status === 'interruption') {
     activite = 'Interruption extérieure / Repli sous abri';
-    consigne =
-      precipTotal >= 1.5
-        ? `Pluie battante (${precipTotal} mm) : bâchage impératif et arrêt outillage non abrité.`
-        : gustMax >= 55
-        ? `Rafales dangereuses (${gustMax} km/h) : arrêt levage et travail en hauteur.`
-        : 'Gel du support : arrêt vissage et collage.';
+    if (metier === 'facade') {
+      consigne =
+        tempAvg < 5
+          ? `Grand froid (${tempAvg}°C < 5°C) : arrêt pose HPL (panneau cassant au perçage, perte d'adhérence EPDM/colles).`
+          : tempAvg >= 35
+          ? `Forte chaleur (${tempAvg}°C >= 35°C) : arrêt pose HPL en plein soleil (extension maximale, risque de cisaillement hivernal).`
+          : precipTotal >= 1.0
+          ? `Pluie (${precipTotal} mm) : interdiction de pose sur ossature humide (humidité bois < 19% DTU 41.2/45.4) et bâchage de l'isolant.`
+          : `Rafales dangereuses (${gustMax} km/h) : arrêt manipulation des panneaux et travail sur échafaudage (R408).`;
+    } else {
+      consigne =
+        precipTotal >= 1.5
+          ? `Pluie battante (${precipTotal} mm) : bâchage impératif et arrêt outillage non abrité.`
+          : gustMax >= 55
+          ? `Rafales dangereuses (${gustMax} km/h) : arrêt levage et travail en hauteur.`
+          : 'Gel du support : arrêt vissage et collage.';
+    }
   } else if (status === 'vigilance') {
     activite = 'Vigilance & Précautions de pose';
-    consigne =
-      precipTotal > 0
-        ? `Averses (${precipTotal} mm) : garder les bâches à portée immédiate.`
-        : gustMax >= 38
-        ? `Vent sensible (${gustMax} km/h) : maintenir les lames et panneaux légers.`
-        : tempAvg >= 30
-        ? 'Forte chaleur : majorer les jeux de dilatation de 1 à 2 mm.'
-        : 'Basse température : vérifier l’adhérence des bandes de protection.';
+    if (metier === 'facade') {
+      consigne =
+        precipTotal > 0
+          ? `Humidité / averses (${precipTotal} mm) : poser le pare-pluie à l'avancement, vérifier bois < 19 % et prévoir bâchage soir.`
+          : tempAvg < 10
+          ? `Température fraîche (${tempAvg}°C < 10°C) : pose collée ou prescription Polyrey (≥ 10°C durant 5h) interdite ; vérifier bande EPDM.`
+          : tempAvg >= 30
+          ? `Chaleur (${tempAvg}°C >= 30°C) : dilatation HPL élevée, contrôler les points coulissants et joints de dilatation.`
+          : `Vent sensible (${gustMax} km/h) : maintenir les panneaux HPL contre la prise au vent.`;
+    } else {
+      consigne =
+        precipTotal > 0
+          ? `Averses (${precipTotal} mm) : garder les bâches à portée immédiate.`
+          : gustMax >= 38
+          ? `Vent sensible (${gustMax} km/h) : maintenir les lames et panneaux légers.`
+          : tempAvg >= 30
+          ? 'Forte chaleur : majorer les jeux de dilatation de 1 à 2 mm.'
+          : 'Basse température : vérifier l’adhérence des bandes de protection.';
+    }
   }
 
   return {
@@ -168,10 +227,31 @@ export function analyzePoseConditions(
 
   // Calcul du statut global
   let globalStatus: PoseStatus = 'favorable';
-  if (vigilanceLevel >= 3 || precip >= 2.5 || gust >= 58 || temp <= 1) {
-    globalStatus = 'interruption';
-  } else if (vigilanceLevel === 2 || precip > 0.2 || gust >= 38 || temp < 5 || temp >= 30 || humidity > 85) {
-    globalStatus = 'vigilance';
+  if (metier === 'facade') {
+    if (
+      vigilanceLevel >= 3 ||
+      precip >= 1.0 ||
+      gust >= 50 ||
+      temp < 5 ||
+      temp >= 35
+    ) {
+      globalStatus = 'interruption';
+    } else if (
+      vigilanceLevel === 2 ||
+      precip > 0.1 ||
+      gust >= 35 ||
+      temp < 10 ||
+      temp >= 30 ||
+      humidity > 85
+    ) {
+      globalStatus = 'vigilance';
+    }
+  } else {
+    if (vigilanceLevel >= 3 || precip >= 2.5 || gust >= 58 || temp <= 1) {
+      globalStatus = 'interruption';
+    } else if (vigilanceLevel === 2 || precip > 0.2 || gust >= 38 || temp < 5 || temp >= 30 || humidity > 85) {
+      globalStatus = 'vigilance';
+    }
   }
 
   const badgeMap = {
@@ -195,16 +275,24 @@ export function analyzePoseConditions(
     },
   };
 
-  const creneaux = today ? computeDailyTimeSlots(today) : [];
+  const creneaux = today ? computeDailyTimeSlots(today, metier) : [];
 
-  // Détection de l'heure charnière (ex: passage au rouge ou à la pluie)
+  // Détection de l'heure charnière (ex: passage au rouge, averse ou bâchage de fin de journée)
   let horaireCharniere: { heure: string; action: string } | undefined = undefined;
-  const slotPluie = creneaux.find((s) => s.status !== 'favorable' && s.precipMm > 0.2);
+  const slotPluie = creneaux.find((s) => s.status !== 'favorable' && s.precipMm > 0.1);
   if (slotPluie) {
     const minutePrepa = slotPluie.startHour > 0 ? `${(slotPluie.startHour - 1).toString().padStart(2, '0')}h30` : '12h00';
     horaireCharniere = {
       heure: minutePrepa,
-      action: `Bâchage obligatoire de la structure avant les averses de ${slotPluie.startFormatted}`,
+      action:
+        metier === 'facade'
+          ? `Pose immédiate du pare-pluie sur l'isolant et bâchage obligatoire des façades non bardées avant les averses de ${slotPluie.startFormatted}`
+          : `Bâchage obligatoire de la structure avant les averses de ${slotPluie.startFormatted}`,
+    };
+  } else if (metier === 'facade' && (humidity > 80 || (today?.precipitation_sum ?? 0) > 0.2)) {
+    horaireCharniere = {
+      heure: '17h30',
+      action: 'Bâchage obligatoire en fin de journée des façades isolées non encore protégées par le bardage HPL (risque d’averse / humidité nocturne).',
     };
   }
 
@@ -240,18 +328,68 @@ export function analyzePoseConditions(
       pointsCritiques.push('Froid / Gel : Bois durci cassant. Vissage direct déconseillé sans pré-perçage (risque de cisaillement des vis inox).');
     }
   } else if (metier === 'facade') {
-    // Règle Bardage DTU 41.2 & R408 Sécurité
-    if (gust >= 50) {
-      pointsCritiques.push(`Prise au vent extrême (${Math.round(gust)} km/h) : Manipulation de clins et plaques interdite en hauteur.`);
-      pointsCritiques.push('Sécurité échafaudage : Arrêt du travail sur plateformes conformément aux consignes de sécurité R408.');
-    } else if (gust >= 35) {
-      pointsCritiques.push(`Vent soutenu (${Math.round(gust)} km/h) : Fixer immédiatement chaque lame posée, éviter le pré-positionnement.`);
+    // Règles Expert Bardage HPL / Composite / Bois (DTU 41.2, DTU 45.4, prescriptions fabricants type Polyrey / Trespa)
+
+    // 1. Grand froid ou gel (< 5°C interdiction, 5°C à 10°C vigilance contractuelle)
+    if (temp < 5) {
+      jeuDilatation = 'Pose HPL interdite (< 5°C) — Panneau rétracté et cassant au perçage';
+      pointsCritiques.push(
+        `Interdiction de pose par grand froid (${Math.round(temp)}°C < 5°C) : le stratifié compact HPL devient cassant ; le perçage (points fixes et points dilatants) et l’usinage risquent de fissurer ou d’écailler le panneau.`
+      );
+      pointsCritiques.push(
+        'Fixation & étanchéité (< 5°C) : les joints d’étanchéité, bandes EPDM et colles structurelles (pose collée invisible) ne catalysent pas correctement et perdent leur adhérence.'
+      );
+    } else if (temp < 10) {
+      jeuDilatation = '8 à 10 mm en bout de plaque + centrage strict des points dilatants (pose par temps frais < 10°C)';
+      pointsCritiques.push(
+        `Seuil contractuel 10°C (${Math.round(temp)}°C) : certains fabricants (ex. Polyrey) et systèmes collés imposent une température minimale absolue de 10°C pendant la pose et les 5 heures qui suivent.`
+      );
+      recommandations.push(
+        'Vérifier la bonne adhérence des bandes EPDM sur chevrons secs avant mise en place des panneaux.'
+      );
     }
 
-    if (precip > 0.5) {
-      pointsCritiques.push('Pare-pluie : Interdiction formelle de dérouler le pare-pluie sous pluie battante pour préserver l’isolant sous-jacent.');
+    // 2. Forte chaleur (> 30°C à 35°C : dilatation maximale du HPL)
+    if (temp >= 35) {
+      jeuDilatation = 'Pose HPL au soleil interdite (≥ 35°C) — Extension thermique maximale';
+      pointsCritiques.push(
+        `Interdiction de pose par forte chaleur (${Math.round(temp)}°C ≥ 35°C) : le panneau HPL est à son extension maximale ; lors du retrait hivernal, les tensions provoqueront le cisaillement des fixations ou le bombement des panneaux.`
+      );
+    } else if (temp >= 30) {
+      jeuDilatation = 'Vigilance dilatation HPL (≥ 30°C) : contrôler les jeux en bout de plaque et l’alésage des points coulissants';
+      pointsCritiques.push(
+        `Forte chaleur (${Math.round(temp)}°C ≥ 30°C) : éviter la pose en plein soleil direct ; le HPL fortement dilaté se rétractera en hiver (risque de cisaillement des vis/rivets si les points dilatants ne coulissent pas librement).`
+      );
+    } else if (temp >= 10) {
+      jeuDilatation = 'Jeu nominal DTU 41.2 / 45.4 : 8 à 10 mm entre panneaux (points fixes + points dilatants)';
+    }
+
+    // 3. Pluie battante, humidité du support (< 19%), acclimatation 3 jours, pare-pluie & bâchage
+    if (precip > 0.2 || humidity > 85) {
+      pointsCritiques.push(
+        'Support & ossature humides (DTU 41.2 / DTU 45.4) : interdiction formelle de poser du HPL tant que la maçonnerie ou l’ossature bois secondaire n’est pas sèche (taux d’humidité du bois obligatoirement < 19 % pour éviter pourrissement et moisissures derrière le panneau étanche).'
+      );
+      pointsCritiques.push(
+        'Risque de tuilage (déformation) : ne jamais poser sous pluie continue ; les panneaux HPL doivent être stockés à plat au sec et acclimatés sur le chantier au moins 3 jours (72h) avant la pose.'
+      );
+      pointsCritiques.push(
+        'Pare-pluie & bâchage : appliquer le film pare-pluie au fur et à mesure de l’avancement pour mettre la laine isolante hors d’eau, et bâcher impérativement chaque soir les façades isolées non encore bardées.'
+      );
     } else {
-      recommandations.push('Pose du pare-pluie et tasseautage vertical ventilé (20 mm) favorables.');
+      recommandations.push(
+        'Contrôler à l’humidimètre que l’ossature bois est < 19 % d’humidité (DTU 41.2 / 45.4) et que les panneaux HPL sont acclimatés sur site depuis au moins 3 jours à plat.'
+      );
+      recommandations.push(
+        'Poser le film pare-pluie à l’avancement sur l’isolant et prévoir le bâchage en fin de journée des zones isolées non encore recouvertes.'
+      );
+    }
+
+    // 4. Vent & sécurité échafaudage R408
+    if (gust >= 50) {
+      pointsCritiques.push(`Prise au vent extrême (${Math.round(gust)} km/h) : manipulation des panneaux HPL et clins interdite en hauteur.`);
+      pointsCritiques.push('Sécurité échafaudage : arrêt du travail sur plateformes conformément à la recommandation CNAMTS R408.');
+    } else if (gust >= 35) {
+      pointsCritiques.push(`Vent soutenu (${Math.round(gust)} km/h) : fixer immédiatement chaque panneau posé, éviter tout pré-positionnement non bridé.`);
     }
   } else {
     // Clôture
@@ -303,13 +441,39 @@ export function generateAttestationIntemperie(
     'Phénomène météorologique défavorable rendant impossible la réalisation des travaux dans les règles de l’art.';
 
   let motif = 'Conditions météorologiques incompatibles avec les prescriptions techniques de pose.';
-  if (precipMm >= 2.0) {
+  if (chantier.metier === 'facade') {
+    if (precipMm >= 1.0) {
+      motif = `Pluie et humidité du support (${precipMm} mm) : interdiction formelle de pose du bardage HPL sur ossature humide (humidité du bois devant être < 19 % selon DTU 41.2 / DTU 45.4), risque de tuilage des panneaux et mise hors d'eau obligatoire de l'isolant.`;
+    } else if ((current?.temperature_2m ?? tempMin) < 5 || tempMin < 5) {
+      motif = `Grand froid / gel (${tempMin}°C < 5°C) : stratifié compact HPL cassant au perçage/usinage et absence de catalyse / adhérence des bandes EPDM et colles structurelles (seuil minimal de 5°C à 10°C durant 5h selon prescriptions fabricants).`;
+    } else if ((current?.temperature_2m ?? tempMax) >= 30 || tempMax >= 32) {
+      motif = `Forte chaleur (${tempMax}°C ≥ 30-35°C) : dilatation thermique maximale des panneaux HPL entraînant un risque de cisaillement des fixations ou de bombement lors du retrait hivernal.`;
+    } else if (gustKmH >= 50) {
+      motif = `Rafales de vent violentes (${Math.round(gustKmH)} km/h) : prise au vent critique des panneaux en hauteur et sécurité échafaudage (Recommandation R408).`;
+    } else if (vigilance && vigilance.colorMax >= 3) {
+      motif = `Alerte officielle Météo-France Vigilance ${vigilanceName.toUpperCase()} : arrêt des activités extérieures préconisé par les autorités.`;
+    }
+  } else if (precipMm >= 2.0) {
     motif = `Fortes précipitations continues (${precipMm} mm) : impossibilité de garantir l'étanchéité et la stabilité du bois (DTU 51.4 / DTU 41.2).`;
   } else if (gustKmH >= 55) {
     motif = `Rafales de vent violentes (${Math.round(gustKmH)} km/h) : mise en danger du personnel en hauteur et risque de chute de matériaux (Recommandation R408).`;
   } else if (vigilance && vigilance.colorMax >= 3) {
     motif = `Alerte officielle Météo-France Vigilance ${vigilanceName.toUpperCase()} : arrêt des activités extérieures préconisé par les autorités.`;
   }
+
+  const reglementations =
+    chantier.metier === 'facade'
+      ? [
+          'Code du Travail — Art. L5424-8 : Arrêt pour intempéries justifié par l’inaptitude technique du travail ou le danger pour la sécurité des salariés.',
+          'Normes NF DTU 41.2 & DTU 45.4 : Interdiction formelle de pose sur ossature bois présentant un taux d’humidité ≥ 19 %, obligation de mise hors d’eau de l’isolant (pare-pluie à l’avancement et bâchage journalier) et acclimatation des panneaux HPL 72h au sec.',
+          'Prescriptions Techniques Fabricants HPL (Polyrey / Trespa / Avis Techniques CSTB) : Interdiction de pose en dessous de 5°C (10°C durant 5h pour systèmes spécifiques/collés — risque de fissuration au perçage et non-adhérence EPDM/colles) et au-dessus de 30°C–35°C en plein soleil (dilatation maximale et risque de cisaillement des fixations au retrait hivernal).',
+          'Recommandation CNAMTS R408 : Sécurité des travaux sur échafaudages et manipulation de panneaux par vent soutenu.',
+        ]
+      : [
+          'Code du Travail — Art. L5424-8 : Arrêt pour intempéries justifié par l’inaptitude du travail ou le danger pour la sécurité des salariés.',
+          'Norme NF DTU 51.4 (P65-210) : Interdiction de pose et fixation sur structure détrempée ou bois soumis à variation dimensionnelle anormale.',
+          'Recommandation CNAMTS R408 : Sécurité des travaux de montage et démontage d’échafaudages par vent violent.',
+        ];
 
   return {
     id: idRef,
@@ -328,13 +492,7 @@ export function generateAttestationIntemperie(
       rafalesMaximales: `${Math.round(gustKmH)} km/h en pointe`,
       temperatureMinMax: `${tempMin}°C à ${tempMax}°C`,
     },
-    reglementationsBtp: [
-      'Code du Travail — Art. L5424-8 : Arrêt pour intempéries justifié par l’inaptitude du travail ou le danger pour la sécurité des salariés.',
-      chantier.metier === 'terrasse'
-        ? 'Norme NF DTU 51.4 (P65-210) : Interdiction de pose et fixation sur structure détrempée ou bois soumis à variation dimensionnelle anormale.'
-        : 'Norme NF DTU 41.2 : Interdiction de pose de revêtements extérieurs et pare-pluie exposés aux infiltrations directes.',
-      'Recommandation CNAMTS R408 : Sécurité des travaux de montage et démontage d’échafaudages par vent violent.',
-    ],
+    reglementationsBtp: reglementations,
     consequenceChantier:
       'Suspension légitime des opérations de pose extérieure pour la journée afin de préserver la garantie décennale de l’ouvrage et la sécurité des compagnons.',
   };

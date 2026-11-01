@@ -165,7 +165,9 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
               <Ruler className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <b className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
-                  Jeu de dilatation recommandé aujourd&apos;hui (DTU 51.4) :
+                  {chantier.metier === 'facade'
+                    ? 'Prescriptions Dilatation & Pose HPL (DTU 41.2 / 45.4) :'
+                    : "Jeu de dilatation recommandé aujourd'hui (DTU 51.4) :"}
                 </b>
                 <span className="font-bold text-white text-xs">
                   {expertRules.dilatationJeuConseille}
