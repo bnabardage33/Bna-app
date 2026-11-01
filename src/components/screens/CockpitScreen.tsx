@@ -16,6 +16,8 @@ import {
   AlertCircle,
   MoreVertical,
   Trash2,
+  Edit3,
+  ShieldAlert,
 } from "lucide-react";
 import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
@@ -29,6 +31,13 @@ import {
 import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsTerrasseModal";
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
+import { UpdateAvancementModal } from "@/components/chantiers/UpdateAvancementModal";
+import {
+  ChantierAvancementState,
+  loadChantierAvancement,
+  saveChantierAvancement,
+  fetchChantierLiveMateriaux,
+} from "@/lib/services/avancementService";
 
 interface CockpitScreenProps {
   chantier?: Chantier | null;
@@ -71,6 +80,12 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   const [latestVersion, setLatestVersion] = useState<number | null>(null);
   const [aCommanderCount, setACommanderCount] = useState<number>(0);
 
+  // État d'avancement dynamique BNA-Dashboard
+  const [avancementState, setAvancementState] = useState<ChantierAvancementState>(() =>
+    loadChantierAvancement(chantier.id, chantier.metier, chantier.avancementGlobal, chantier)
+  );
+  const [isUpdateAvancementOpen, setIsUpdateAvancementOpen] = useState(false);
+
   const supabase = createClient();
 
   const loadIndicators = useCallback(async () => {
@@ -93,9 +108,27 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
     }
   }, [supabase, chantier.id, chantier.metier]);
 
+  const refreshAvancement = useCallback(async () => {
+    if (!chantier?.id) return;
+    const loaded = loadChantierAvancement(chantier.id, chantier.metier, chantier.avancementGlobal, chantier);
+    try {
+      const liveMats = await fetchChantierLiveMateriaux(supabase, chantier.id, chantier.metier);
+      if (liveMats.length > 0) loaded.materiaux = liveMats;
+    } catch {
+      // Ignorer
+    }
+    setAvancementState(loaded);
+  }, [chantier, supabase]);
+
   useEffect(() => {
     loadIndicators();
-  }, [loadIndicators, refreshKey]);
+    refreshAvancement();
+  }, [loadIndicators, refreshAvancement, refreshKey]);
+
+  const handleSaveAvancement = async (newState: ChantierAvancementState) => {
+    await saveChantierAvancement(supabase, chantier.id, newState);
+    setAvancementState(newState);
+  };
 
   return (
     <div className="space-y-3 pb-8 animate-in fade-in duration-150">
@@ -173,45 +206,79 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
       {/* 1. Avancement - Spécifique au métier */}
       <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
         <div className="flex justify-between items-center text-xs mb-2">
-          <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
-            AVANCEMENT DU PROJET
+          <div className="flex items-center gap-2">
+            <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
+              AVANCEMENT DU PROJET
+            </b>
+            <button
+              type="button"
+              onClick={() => setIsUpdateAvancementOpen(true)}
+              className="inline-flex items-center gap-1 text-[10px] font-bold text-bna-copper bg-bna-copper-light/60 hover:bg-orange-100 border border-orange-200/60 px-2 py-0.5 rounded-lg transition-all active:scale-95"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>Ajuster</span>
+            </button>
+          </div>
+          <b className="font-display font-black text-sm text-bna-copper">
+            {avancementState.avancementGlobal} %
           </b>
-          <b className="font-bold text-sm text-bna-anthracite">{chantier.avancementGlobal} %</b>
         </div>
-        <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
+        <div className="w-full h-2 bg-neutral-200/80 rounded-full overflow-hidden shadow-inner">
           <div
             className="h-full bg-bna-copper rounded-full transition-all duration-500"
-            style={{ width: `${chantier.avancementGlobal}%` }}
+            style={{ width: `${avancementState.avancementGlobal}%` }}
           />
         </div>
-        <div className="flex flex-wrap justify-between gap-y-1 text-[11px] text-bna-muted mt-2">
-          {chantier.avancementDetails.map((det, idx) => (
-            <span key={idx}>
-              {det.label} : <strong className="text-bna-anthracite">{det.pourcentage}%</strong>
-            </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-bna-muted mt-2 pt-1 border-t border-bna-border/40">
+          {avancementState.avancementDetails.map((det, idx) => (
+            <div key={idx} className="flex items-center justify-between">
+              <span className="truncate pr-2">{det.label}</span>
+              <span
+                className={`font-semibold shrink-0 ${
+                  det.pourcentage === 100
+                    ? "text-emerald-700 font-bold"
+                    : det.pourcentage > 0
+                    ? "text-amber-800"
+                    : "text-slate-400"
+                }`}
+              >
+                {det.pourcentage}%
+              </span>
+            </div>
           ))}
         </div>
       </section>
 
       {/* 2. Prochaine étape */}
-      <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
-        <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block mb-1">
-          PROCHAINE ÉTAPE
-        </b>
-        <div className="flex items-start gap-2.5 mt-2">
-          <div className="w-6 h-6 rounded-full bg-bna-offwhite border border-bna-border flex items-center justify-center shrink-0 mt-0.5 text-bna-copper">
-            <CheckCircle2 className="w-4 h-4" />
+      {avancementState.prochaineEtape && (
+        <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between mb-1">
+            <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
+              PROCHAINE ÉTAPE
+            </b>
+            <button
+              type="button"
+              onClick={() => setIsUpdateAvancementOpen(true)}
+              className="text-[10px] font-bold text-bna-copper hover:underline"
+            >
+              Modifier
+            </button>
           </div>
-          <div>
-            <h4 className="text-xs font-semibold text-bna-anthracite">
-              {chantier.prochaineEtape.titre}
-            </h4>
-            <p className="text-[11px] text-bna-muted mt-0.5">
-              {chantier.prochaineEtape.detail}
-            </p>
+          <div className="flex items-start gap-2.5 mt-2">
+            <div className="w-6 h-6 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center shrink-0 mt-0.5 text-bna-copper">
+              <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-bna-anthracite">
+                {avancementState.prochaineEtape.titre}
+              </h4>
+              <p className="text-[11px] text-bna-muted mt-0.5">
+                {avancementState.prochaineEtape.detail}
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* 3. Météo du Chantier en Temps Réel + Prévisions Semaine + Vigilance Météo-France */}
       <ChantierWeatherCard chantier={chantier} />
@@ -222,7 +289,7 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
           MATÉRIAUX À SURVEILLER
         </b>
         <div className="space-y-2 text-xs">
-          {chantier.materiaux.map((mat, idx) => {
+          {avancementState.materiaux.map((mat, idx) => {
             const isVigilance = mat.statut === "vigilance";
             const isAlerte = mat.statut === "alerte";
             const badgeClass = isAlerte
@@ -244,16 +311,25 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
       </section>
 
       {/* 5. Blocages */}
-      {chantier.blocage && (
+      {avancementState.blocage && avancementState.blocage.titre && (
         <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
-          <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block mb-2">
-            BLOCAGES & POINTS CRITIQUES
-          </b>
+          <div className="flex items-center justify-between mb-2">
+            <b className="text-[11px] font-bold tracking-wider text-rose-800 uppercase">
+              BLOCAGES & POINTS CRITIQUES
+            </b>
+            <button
+              type="button"
+              onClick={() => setIsUpdateAvancementOpen(true)}
+              className="text-[10px] font-bold text-rose-700 hover:underline"
+            >
+              Gérer
+            </button>
+          </div>
           <div className="flex items-start gap-2 p-2.5 bg-rose-50 border border-rose-200/70 rounded-xl text-xs text-rose-800">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
             <div>
-              <span className="font-semibold block">{chantier.blocage.titre}</span>
-              <span className="text-[11px] text-rose-700">{chantier.blocage.detail}</span>
+              <span className="font-semibold block">{avancementState.blocage.titre}</span>
+              <span className="text-[11px] text-rose-700">{avancementState.blocage.detail}</span>
             </div>
           </div>
         </section>
@@ -397,6 +473,15 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         }}
         chantierId={chantier.id}
         chantierNom={chantier.nom}
+      />
+
+      {/* Modal Mise à jour Avancement BNA */}
+      <UpdateAvancementModal
+        isOpen={isUpdateAvancementOpen}
+        onClose={() => setIsUpdateAvancementOpen(false)}
+        chantier={chantier}
+        currentState={avancementState}
+        onSave={handleSaveAvancement}
       />
     </div>
   );

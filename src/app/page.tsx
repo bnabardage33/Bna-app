@@ -116,6 +116,7 @@ export default function HomePage() {
                 }
               }}
               onNewChantier={() => setIsNewChantierOpen(true)}
+              onAvancementUpdated={refreshChantiers}
             />
             <RiskProjectsCard
               chantiers={chantiers}
