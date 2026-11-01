@@ -13,6 +13,11 @@ import {
 } from "lucide-react";
 import type { Chantier } from "@/types/metier";
 import { creerRendezVous, type CreerRendezVousInput } from "@/lib/services/rendezVousService";
+import {
+  NATURES_CONFIG,
+  categorizeNature,
+  type NatureKey,
+} from "@/lib/services/planningService";
 import { createClient } from "@/lib/supabase/client";
 
 interface NewRdvModalProps {
@@ -35,6 +40,7 @@ export const NewRdvModal: React.FC<NewRdvModalProps> = ({
   const todayStr = new Date().toISOString().slice(0, 10);
   const [chantierId, setChantierId] = useState<string>(selectedChantierId || "");
   const [titre, setTitre] = useState<string>("Visite technique de chantier");
+  const [natureType, setNatureType] = useState<NatureKey>("technique");
   const [date, setDate] = useState<string>(todayStr);
   const [heureDebut, setHeureDebut] = useState<string>("09:00");
   const [heureFin, setHeureFin] = useState<string>("10:30");
@@ -52,6 +58,21 @@ export const NewRdvModal: React.FC<NewRdvModalProps> = ({
       if (!lieu || lieu === "") {
         setLieu(found.ville || found.adresse || "");
       }
+    }
+  };
+
+  const handleNatureSelect = (key: NatureKey) => {
+    setNatureType(key);
+    if (key === "technique" && (!titre || titre.includes("Point") || titre.includes("Réception"))) {
+      setTitre("Visite technique de contrôle DTU");
+    } else if (key === "reception" && (!titre || titre.includes("technique") || titre.includes("Point"))) {
+      setTitre("Réception des travaux & signature PV");
+    } else if (key === "client" && (!titre || titre.includes("technique") || titre.includes("Réception"))) {
+      setTitre("Point d'étape avec le client");
+    } else if (key === "livraison") {
+      setTitre("Réception des matériaux sur chantier");
+    } else if (key === "travaux") {
+      setTitre("Démarrage travaux de pose");
     }
   };
 
@@ -88,6 +109,7 @@ export const NewRdvModal: React.FC<NewRdvModalProps> = ({
       client_nom: foundChantier?.client_nom || null,
       titre: titre.trim(),
       nature: nature.trim(),
+      nature_type: natureType,
       date,
       heure_debut: heureDebut,
       heure_fin: heureFin || null,
@@ -247,6 +269,39 @@ export const NewRdvModal: React.FC<NewRdvModalProps> = ({
                   onChange={(e) => setHeureFin(e.target.value)}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* SÉLECTEUR DE CATÉGORIE / NATURE (COULEURS DÉDIÉES) */}
+          <div>
+            <label className={lbl}>Catégorie &amp; Nature du rendez-vous</label>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { key: "technique", label: "Technique & DTU", color: "bg-orange-50 text-orange-800 border-orange-300" },
+                  { key: "reception", label: "Réception & PV", color: "bg-emerald-50 text-emerald-800 border-emerald-300" },
+                  { key: "client", label: "Point Client", color: "bg-blue-50 text-blue-800 border-blue-300" },
+                  { key: "livraison", label: "Livraison Matériaux", color: "bg-purple-50 text-purple-800 border-purple-300" },
+                  { key: "travaux", label: "Chantier & Pose", color: "bg-slate-100 text-slate-800 border-slate-300" },
+                  { key: "administratif", label: "Administratif", color: "bg-indigo-50 text-indigo-800 border-indigo-300" },
+                ] as const
+              ).map((cat) => {
+                const isSelected = natureType === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => handleNatureSelect(cat.key)}
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-xl border transition-all ${
+                      isSelected
+                        ? `${cat.color} ring-2 ring-offset-1 ring-bna-copper scale-[1.02]`
+                        : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

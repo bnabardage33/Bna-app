@@ -7,6 +7,8 @@ export const MOCK_CHANTIERS: Record<string, Chantier> = {
     ville: "Mérignac",
     metier: "terrasse",
     intervention: "Pose des lames en cours",
+    date_debut_prevue: "2026-10-25",
+    date_fin_prevue: "2026-11-06",
     avancementGlobal: 65,
     avancementDetails: [
       { label: "Structure lambourdes & plots", pourcentage: 100 },
@@ -39,6 +41,8 @@ export const MOCK_CHANTIERS: Record<string, Chantier> = {
     ville: "Pessac",
     metier: "facade",
     intervention: "Pose ossature bois & pare-pluie",
+    date_debut_prevue: "2026-10-28",
+    date_fin_prevue: "2026-11-12",
     avancementGlobal: 40,
     avancementDetails: [
       { label: "Ossature secondaire & équerres", pourcentage: 80 },
@@ -72,6 +76,8 @@ export const MOCK_CHANTIERS: Record<string, Chantier> = {
     ville: "Talence",
     metier: "cloture",
     intervention: "Scellement des poteaux et pose travées",
+    date_debut_prevue: "2026-11-01",
+    date_fin_prevue: "2026-11-10",
     avancementGlobal: 55,
     avancementDetails: [
       { label: "Scellement poteaux / platines", pourcentage: 90 },

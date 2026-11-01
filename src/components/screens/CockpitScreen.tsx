@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ArrowLeft,
   Camera,
@@ -33,6 +33,7 @@ import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsT
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
 import { UpdateAvancementModal } from "@/components/chantiers/UpdateAvancementModal";
+import { ChantierPlanningModal } from "@/components/chantiers/ChantierPlanningModal";
 import {
   ChantierAvancementState,
   loadChantierAvancement,
@@ -76,6 +77,17 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   // Modales dédiées aux accès secondaires
   const [isQuantitatifsOpen, setIsQuantitatifsOpen] = useState(false);
   const [isMateriauxOpen, setIsMateriauxOpen] = useState(false);
+  const [isPlanningOpen, setIsPlanningOpen] = useState(false);
+  const [chantierDates, setChantierDates] = useState<{ dateDebut?: string; dateFin?: string }>({
+    dateDebut: chantier.date_debut_prevue,
+    dateFin: chantier.date_fin_prevue,
+  });
+
+  const displayChantier: Chantier = useMemo(() => ({
+    ...chantier,
+    date_debut_prevue: chantierDates.dateDebut ?? chantier.date_debut_prevue,
+    date_fin_prevue: chantierDates.dateFin ?? chantier.date_fin_prevue,
+  }), [chantier, chantierDates]);
 
   // Indicateurs temps réel issus de Supabase
   const [latestVersion, setLatestVersion] = useState<number | null>(null);
@@ -363,16 +375,23 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
           ACCÈS SECONDAIRES
         </b>
         <div className="divide-y divide-bna-border/50 text-xs">
-          {/* Planning & Jalons */}
+          {/* Planning & Jalons (Mermaid.js V2) */}
           <div
-            onClick={() => alert("Accès Planning")}
+            onClick={() => setIsPlanningOpen(true)}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
           >
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-bna-muted" />
-              <span className="font-medium text-bna-anthracite">Planning & Jalons</span>
+              <Calendar className="w-4 h-4 text-bna-copper" />
+              <span className="font-medium text-bna-anthracite">Planning &amp; Jalons</span>
             </div>
-            <ChevronRight className="w-4 h-4 text-bna-muted" />
+            <div className="flex items-center gap-1.5">
+              {displayChantier.date_debut_prevue && (
+                <span className="text-[10px] font-semibold text-bna-muted px-2 py-0.5 rounded-full bg-neutral-100 border border-neutral-200">
+                  Dès le {displayChantier.date_debut_prevue}
+                </span>
+              )}
+              <ChevronRight className="w-4 h-4 text-bna-muted" />
+            </div>
           </div>
 
           {/* Calepinage (Terrasse / Métier) */}
@@ -486,6 +505,16 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         chantier={chantier}
         currentState={avancementState}
         onSave={handleSaveAvancement}
+      />
+
+      {/* Modal Planning & Jalons Chantier V2 (Mermaid.js) */}
+      <ChantierPlanningModal
+        isOpen={isPlanningOpen}
+        onClose={() => setIsPlanningOpen(false)}
+        chantier={displayChantier}
+        onChantierUpdated={(updated) => {
+          setChantierDates((prev) => ({ ...prev, ...updated }));
+        }}
       />
     </div>
   );

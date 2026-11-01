@@ -267,3 +267,53 @@ export async function getDeletedChantiers(
   if (error) throw error;
   return (data as any) || [];
 }
+
+/**
+ * Met à jour les dates de début et fin prévues d'un chantier.
+ * Synchronise en temps réel la base Supabase et le cache local pour le planning.
+ */
+export async function updateChantierDates(
+  supabase: SupabaseClient<Database> | null | undefined,
+  chantierId: string,
+  dateDebutPrevue?: string | null,
+  dateFinPrevue?: string | null
+): Promise<void> {
+  // 1. Mise à jour de l'objet mock si présent
+  if (MOCK_CHANTIERS[chantierId]) {
+    if (dateDebutPrevue !== undefined) {
+      MOCK_CHANTIERS[chantierId].date_debut_prevue = dateDebutPrevue || undefined;
+    }
+    if (dateFinPrevue !== undefined) {
+      MOCK_CHANTIERS[chantierId].date_fin_prevue = dateFinPrevue || undefined;
+    }
+  }
+
+  // 2. Persistance locale offline
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("bna_chantiers_dates_overrides") || "{}";
+      const overrides = JSON.parse(stored);
+      overrides[chantierId] = {
+        date_debut_prevue: dateDebutPrevue,
+        date_fin_prevue: dateFinPrevue,
+      };
+      localStorage.setItem("bna_chantiers_dates_overrides", JSON.stringify(overrides));
+    } catch {
+      // ignorer
+    }
+  }
+
+  // 3. Mise à jour Supabase si connecté et id UUID
+  if (supabase && isUuid(chantierId)) {
+    try {
+      await (supabase.from("chantiers") as any)
+        .update({
+          date_debut_prevue: dateDebutPrevue || null,
+          date_fin_prevue: dateFinPrevue || null,
+        })
+        .eq("id", chantierId);
+    } catch (err) {
+      console.warn("Erreur mise à jour dates chantier Supabase :", err);
+    }
+  }
+}

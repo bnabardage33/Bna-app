@@ -18,6 +18,7 @@ export interface RendezVous {
   client_nom?: string | null;
   titre: string;
   nature: string;
+  nature_type?: string | null;
   date: string; // YYYY-MM-DD
   heure_debut: string; // "09:00"
   heure_fin?: string | null; // "10:30"
@@ -33,6 +34,7 @@ export interface CreerRendezVousInput {
   client_nom?: string | null;
   titre: string;
   nature: string;
+  nature_type?: string | null;
   date: string;
   heure_debut: string;
   heure_fin?: string | null;
@@ -170,6 +172,17 @@ export async function getRendezVous(
 }
 
 /**
+ * Récupère les rendez-vous spécifiquement associés à un chantier.
+ */
+export async function getRendezVousByChantier(
+  supabase: SupabaseClient | null | undefined,
+  chantierId: string
+): Promise<RendezVous[]> {
+  const all = await getRendezVous(supabase);
+  return all.filter((r) => r.chantier_id === chantierId);
+}
+
+/**
  * Crée un nouveau rendez-vous et le sauvegarde immédiatement.
  */
 export async function creerRendezVous(
@@ -184,6 +197,7 @@ export async function creerRendezVous(
     client_nom: input.client_nom || null,
     titre: input.titre.trim() || "Rendez-vous",
     nature: input.nature.trim() || "Point technique de chantier",
+    nature_type: input.nature_type || null,
     date: input.date || new Date().toISOString().slice(0, 10),
     heure_debut: input.heure_debut || "09:00",
     heure_fin: input.heure_fin || null,

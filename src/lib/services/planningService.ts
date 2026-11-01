@@ -1,12 +1,19 @@
 /**
- * BNA-APP — Service Planning Général & Jalons V1
+ * BNA-APP — Service Planning Général & Jalons V1 & V2
  *
- * Consolide tous les éléments planifiés du dashboard :
+ * Consolide tous les éléments planifiés du dashboard & du cockpit chantier :
  * - Chantiers en cours et à venir (périodes, avancement, étapes)
  * - Rendez-vous clients & réunions de chantier (nature, heure, lieu)
  * - Commandes passées & livraisons fournisseurs attendues
  *
- * Génère le diagramme Gantt Mermaid.js officiel pour l'affichage temps réel.
+ * Distingue précisément chaque nature avec une palette de couleurs dédiée :
+ * - Technique & Contrôle DTU : Orange Cuivre BNA (#EA580C)
+ * - Réception & PV Client : Vert Émeraude (#059669)
+ * - Point Client & Devis : Bleu Cobalt (#2563EB)
+ * - Commandes & Livraisons : Violet Améthyste (#7C3AED)
+ * - Chantier & Pose Terrain : Ardoise (#475569)
+ * - Administratif & Formalités : Indigo (#4F46E5)
+ * - Autre / Jalon standard : Gris neutre (#737373)
  */
 
 import type { Chantier } from "@/types/metier";
@@ -14,6 +21,83 @@ import type { CommandeAvecFournisseur } from "./commandesFournisseursService";
 import type { RendezVous } from "./rendezVousService";
 
 export type PlanningItemType = "chantier" | "rdv" | "commande" | "livraison";
+
+export type NatureKey =
+  | "technique"
+  | "reception"
+  | "client"
+  | "livraison"
+  | "travaux"
+  | "administratif"
+  | "autre";
+
+export interface NatureConfig {
+  key: NatureKey;
+  label: string;
+  badgeClass: string;
+  dotColor: string;
+  borderClass: string;
+  tagMermaid: string;
+}
+
+export const NATURES_CONFIG: Record<NatureKey, NatureConfig> = {
+  technique: {
+    key: "technique",
+    label: "Technique & DTU",
+    badgeClass: "bg-orange-50 text-orange-800 border-orange-300",
+    dotColor: "#EA580C",
+    borderClass: "border-orange-400",
+    tagMermaid: ":crit, ",
+  },
+  reception: {
+    key: "reception",
+    label: "Réception & PV",
+    badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-300",
+    dotColor: "#059669",
+    borderClass: "border-emerald-400",
+    tagMermaid: ":active, ",
+  },
+  client: {
+    key: "client",
+    label: "Point Client & Devis",
+    badgeClass: "bg-blue-50 text-blue-800 border-blue-300",
+    dotColor: "#2563EB",
+    borderClass: "border-blue-400",
+    tagMermaid: ":active, ",
+  },
+  livraison: {
+    key: "livraison",
+    label: "Commande & Livraison",
+    badgeClass: "bg-purple-50 text-purple-800 border-purple-300",
+    dotColor: "#7C3AED",
+    borderClass: "border-purple-400",
+    tagMermaid: ":milestone, ",
+  },
+  travaux: {
+    key: "travaux",
+    label: "Chantier & Pose",
+    badgeClass: "bg-slate-100 text-slate-800 border-slate-300",
+    dotColor: "#475569",
+    borderClass: "border-slate-400",
+    tagMermaid: ":",
+  },
+  administratif: {
+    key: "administratif",
+    label: "Administratif & Formalités",
+    badgeClass: "bg-indigo-50 text-indigo-800 border-indigo-300",
+    dotColor: "#4F46E5",
+    borderClass: "border-indigo-400",
+    tagMermaid: ":",
+  },
+  autre: {
+    key: "autre",
+    label: "Jalon Général",
+    badgeClass: "bg-neutral-100 text-neutral-800 border-neutral-300",
+    dotColor: "#737373",
+    borderClass: "border-neutral-300",
+    tagMermaid: ":",
+  },
+};
 
 export interface UnifiedPlanningItem {
   id: string;
@@ -27,10 +111,112 @@ export interface UnifiedPlanningItem {
   chantierNom?: string;
   statut: string;    // "en_cours", "planifie", "confirme", "commande", "livre", etc.
   statutLabel: string;
+  natureKey: NatureKey;
+  dotColor: string;
   badgeColorClass: string;
   nature?: string;   // Description détaillée / encadré nature du rdv
   fournisseurNom?: string;
   avancement?: number;
+}
+
+/**
+ * Détermine automatiquement la catégorie de nature d'un événement selon son texte ou son type.
+ */
+export function categorizeNature(
+  text?: string | null,
+  defaultType?: PlanningItemType,
+  explicitKey?: string | null
+): NatureKey {
+  if (explicitKey && explicitKey in NATURES_CONFIG) {
+    return explicitKey as NatureKey;
+  }
+
+  if (defaultType === "commande" || defaultType === "livraison") {
+    return "livraison";
+  }
+
+  if (defaultType === "chantier") {
+    return "travaux";
+  }
+
+  if (!text) return "autre";
+  const s = text.toLowerCase();
+
+  // 1. Réception & PV
+  if (
+    s.includes("recept") ||
+    s.includes("pv") ||
+    s.includes("reserve") ||
+    s.includes("livraison fin") ||
+    s.includes("parfait achevement")
+  ) {
+    return "reception";
+  }
+
+  // 2. Technique, DTU, humidité, ossature, réglage plots
+  if (
+    s.includes("tech") ||
+    s.includes("dtu") ||
+    s.includes("humid") ||
+    s.includes("lambourde") ||
+    s.includes("plot") ||
+    s.includes("visite") ||
+    s.includes("controle") ||
+    s.includes("contrôle") ||
+    s.includes("equerre") ||
+    s.includes("équerre") ||
+    s.includes("pare-pluie") ||
+    s.includes("chevron") ||
+    s.includes("liteau") ||
+    s.includes("dilatation") ||
+    s.includes("ventilation")
+  ) {
+    return "technique";
+  }
+
+  // 3. Point client, réunion, teinte, devis
+  if (
+    s.includes("client") ||
+    s.includes("reunion") ||
+    s.includes("réunion") ||
+    s.includes("choix") ||
+    s.includes("teinte") ||
+    s.includes("devis") ||
+    s.includes("point d'etape") ||
+    s.includes("point d'étape")
+  ) {
+    return "client";
+  }
+
+  // 4. Commande, approvisionnement, fournisseur
+  if (
+    s.includes("livrais") ||
+    s.includes("materiau") ||
+    s.includes("matériau") ||
+    s.includes("fournisseur") ||
+    s.includes("colis")
+  ) {
+    return "livraison";
+  }
+
+  // 5. Chantier, travaux, démarrage, pose
+  if (
+    s.includes("travaux") ||
+    s.includes("pose") ||
+    s.includes("ossature") ||
+    s.includes("demarrage") ||
+    s.includes("démarrage") ||
+    s.includes("platelage")
+  ) {
+    return "travaux";
+  }
+
+  // 6. Administratif
+  if (s.includes("admin") || s.includes("factur") || s.includes("assurance")) {
+    return "administratif";
+  }
+
+  return "technique";
 }
 
 function sanitizeMermaidText(str: string): string {
@@ -65,7 +251,7 @@ function addDays(dateStr: string, days: number): string {
 }
 
 /**
- * Construit la liste unifiée des éléments du planning à partir des chantiers, commandes et RDVs.
+ * Construit la liste unifiée des éléments du planning général à partir des chantiers, commandes et RDVs.
  */
 export function buildUnifiedPlanning(
   chantiers: Chantier[],
@@ -78,13 +264,15 @@ export function buildUnifiedPlanning(
   for (const c of chantiers) {
     if (c.deleted_at) continue;
 
-    // Dates prévues ou déduites
     let debut = normalizeDate(c.date_debut_prevue);
     let fin = c.date_fin_prevue ? normalizeDate(c.date_fin_prevue) : addDays(debut, 14);
 
     if (debut > fin) {
       fin = addDays(debut, 7);
     }
+
+    const natureKey = "travaux";
+    const cfg = NATURES_CONFIG[natureKey];
 
     items.push({
       id: `ch-${c.id}`,
@@ -97,10 +285,9 @@ export function buildUnifiedPlanning(
       chantierNom: c.nom,
       statut: c.avancementGlobal >= 100 ? "termine" : "en_cours",
       statutLabel: c.avancementGlobal >= 100 ? "Terminé (100%)" : `En cours (${c.avancementGlobal}%)`,
-      badgeColorClass:
-        c.avancementGlobal >= 100
-          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-          : "bg-blue-50 text-blue-800 border-blue-200",
+      natureKey,
+      dotColor: cfg.dotColor,
+      badgeColorClass: cfg.badgeClass,
       avancement: c.avancementGlobal,
       nature: c.prochaineEtape ? `Étape : ${c.prochaineEtape.titre}. ${c.prochaineEtape.detail || ""}` : undefined,
     });
@@ -110,6 +297,8 @@ export function buildUnifiedPlanning(
   for (const r of rdvs) {
     const d = normalizeDate(r.date);
     const heureLabel = r.heure_fin ? `${r.heure_debut} - ${r.heure_fin}` : r.heure_debut;
+    const natureKey = categorizeNature(r.nature || r.titre, "rdv", r.nature_type);
+    const cfg = NATURES_CONFIG[natureKey];
 
     items.push({
       id: `rdv-${r.id}`,
@@ -123,12 +312,9 @@ export function buildUnifiedPlanning(
       chantierNom: r.chantier_nom || undefined,
       statut: r.statut,
       statutLabel: r.statut === "confirme" ? "Confirmé" : r.statut === "effectue" ? "Effectué" : "Planifié",
-      badgeColorClass:
-        r.statut === "confirme"
-          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-          : r.statut === "effectue"
-          ? "bg-slate-100 text-slate-700 border-slate-300"
-          : "bg-amber-50 text-amber-800 border-amber-200",
+      natureKey,
+      dotColor: cfg.dotColor,
+      badgeColorClass: cfg.badgeClass,
       nature: r.nature,
     });
   }
@@ -137,6 +323,7 @@ export function buildUnifiedPlanning(
   for (const cmd of commandes) {
     const fNom = cmd.fournisseur?.nom || "Fournisseur";
     const dateCmd = normalizeDate(cmd.created_at);
+    const cfgLiv = NATURES_CONFIG["livraison"];
 
     // Date de commande
     items.push({
@@ -149,7 +336,9 @@ export function buildUnifiedPlanning(
       chantierId: cmd.chantier_id,
       statut: cmd.statut,
       statutLabel: `Commande ${cmd.statut}`,
-      badgeColorClass: "bg-purple-50 text-purple-800 border-purple-200",
+      natureKey: "livraison",
+      dotColor: cfgLiv.dotColor,
+      badgeColorClass: cfgLiv.badgeClass,
       fournisseurNom: fNom,
       nature: cmd.commentaire || `Commande de matériaux auprès de ${fNom}`,
     });
@@ -167,7 +356,9 @@ export function buildUnifiedPlanning(
         chantierId: cmd.chantier_id,
         statut: "livraison_prevue",
         statutLabel: "Réception attendue",
-        badgeColorClass: "bg-orange-50 text-bna-copper border-orange-200",
+        natureKey: "livraison",
+        dotColor: cfgLiv.dotColor,
+        badgeColorClass: cfgLiv.badgeClass,
         fournisseurNom: fNom,
         nature: `Réception sur chantier des matériaux commandés chez ${fNom} (${cmd.date_livraison_souhaitee})`,
       });
@@ -183,7 +374,22 @@ export function buildUnifiedPlanning(
 }
 
 /**
- * Génère le code source de diagramme Gantt Mermaid.js à partir des éléments du planning.
+ * Construit la liste unifiée spécifiquement restreinte aux éléments d'un seul chantier (Cockpit V2).
+ */
+export function buildChantierPlanningItems(
+  chantier: Chantier,
+  commandes: CommandeAvecFournisseur[],
+  rdvs: RendezVous[]
+): UnifiedPlanningItem[] {
+  const all = buildUnifiedPlanning([chantier], commandes, rdvs);
+  return all.filter((item) => {
+    if (item.type === "chantier") return item.chantierId === chantier.id;
+    return item.chantierId === chantier.id;
+  });
+}
+
+/**
+ * Génère le code source de diagramme Gantt Mermaid.js pour le planning général (V1).
  */
 export function generateMermaidGantt(items: UnifiedPlanningItem[]): string {
   const chantiers = items.filter((i) => i.type === "chantier");
@@ -207,14 +413,14 @@ export function generateMermaidGantt(items: UnifiedPlanningItem[]): string {
     });
   }
 
-  // Section 2 : Rendez-vous & Jalons
+  // Section 2 : Rendez-vous & Jalons avec balises de nature
   if (rdvs.length > 0) {
     lines.push("  section RDV & Visites");
     rdvs.slice(0, 6).forEach((r, idx) => {
       const heurePart = r.heure ? ` [${r.heure.split("-")[0].trim()}]` : "";
       const label = sanitizeMermaidText(`${r.titre}${heurePart}`);
-      const critModifier = r.statut === "confirme" ? ":crit, " : ":";
-      lines.push(`  ${label} ${critModifier}rdv_${idx}, ${r.dateDebut}, 1d`);
+      const tag = NATURES_CONFIG[r.natureKey]?.tagMermaid || ":";
+      lines.push(`  ${label} ${tag}rdv_${idx}, ${r.dateDebut}, 1d`);
     });
   }
 
@@ -236,3 +442,113 @@ export function generateMermaidGantt(items: UnifiedPlanningItem[]): string {
 
   return lines.join("\n");
 }
+
+/**
+ * Génère le code source de diagramme Gantt Mermaid.js pour un chantier spécifique (Cockpit V2).
+ * Met en lumière :
+ * - La période globale du chantier (dates de début et de fin)
+ * - Les commandes et dates de livraison fournisseurs attendues
+ * - Les rendez-vous et points d'étape terrain avec leurs couleurs de nature
+ */
+export function generateChantierMermaidGantt(
+  chantier: Chantier,
+  commandes: CommandeAvecFournisseur[],
+  rdvs: RendezVous[]
+): string {
+  const debut = normalizeDate(chantier.date_debut_prevue);
+  let fin = chantier.date_fin_prevue ? normalizeDate(chantier.date_fin_prevue) : addDays(debut, 14);
+  if (debut > fin) fin = addDays(debut, 7);
+
+  const lines: string[] = [
+    "gantt",
+    "  dateFormat YYYY-MM-DD",
+    "  axisFormat %d/%m",
+    `  title Planning Chantier — ${sanitizeMermaidText(chantier.nom)}`,
+  ];
+
+  // 1. Période & Travaux Chantier
+  lines.push("  section Travaux Chantier");
+  const chantierLabel = sanitizeMermaidText(`${chantier.nom} (${chantier.avancementGlobal}%)`);
+  lines.push(`  ${chantierLabel} :active, ch_travaux, ${debut}, ${fin}`);
+
+  if (chantier.prochaineEtape?.titre) {
+    const etapeLabel = sanitizeMermaidText(`Étape : ${chantier.prochaineEtape.titre}`);
+    lines.push(`  ${etapeLabel} :active, ch_etape, ${debut}, ${addDays(debut, 4)}`);
+  }
+
+  // 2. Commandes & Livraisons Fournisseurs
+  const chantierCmds = commandes.filter((c) => c.chantier_id === chantier.id);
+  if (chantierCmds.length > 0) {
+    lines.push("  section Livraisons & Matériaux");
+    chantierCmds.forEach((cmd, idx) => {
+      const fNom = cmd.fournisseur?.nom || "Fournisseur";
+      if (cmd.date_livraison_souhaitee) {
+        const dLiv = normalizeDate(cmd.date_livraison_souhaitee);
+        const labelLiv = sanitizeMermaidText(`Livraison ${fNom}`);
+        lines.push(`  ${labelLiv} :milestone, ch_liv_${idx}, ${dLiv}, 0d`);
+      } else {
+        const dCmd = normalizeDate(cmd.created_at);
+        const labelCmd = sanitizeMermaidText(`Cmd ${cmd.numero_commande}`);
+        lines.push(`  ${labelCmd} :milestone, ch_cmd_${idx}, ${dCmd}, 0d`);
+      }
+    });
+  }
+
+  // 3. Rendez-vous & Jalons Terrain
+  const chantierRdvs = rdvs.filter((r) => r.chantier_id === chantier.id);
+  if (chantierRdvs.length > 0) {
+    lines.push("  section RDV & Jalons Terrain");
+    chantierRdvs.forEach((r, idx) => {
+      const d = normalizeDate(r.date);
+      const heurePart = r.heure_debut ? ` [${r.heure_debut}]` : "";
+      const label = sanitizeMermaidText(`${r.titre}${heurePart}`);
+      const natureKey = categorizeNature(r.nature || r.titre, "rdv", r.nature_type);
+      const tag = NATURES_CONFIG[natureKey]?.tagMermaid || ":";
+      lines.push(`  ${label} ${tag}ch_rdv_${idx}, ${d}, 1d`);
+    });
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Met à jour les dates prévues d'un chantier (début et fin).
+ * Persiste localement et synchronise Supabase si connecté.
+ */
+export async function updateChantierDates(
+  supabase: any,
+  chantierId: string,
+  dateDebutPrevue?: string | null,
+  dateFinPrevue?: string | null
+): Promise<void> {
+  // 1. Persistance locale dans localStorage si disponible
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("bna_chantiers_dates_overrides") || "{}";
+      const overrides = JSON.parse(stored);
+      overrides[chantierId] = {
+        date_debut_prevue: dateDebutPrevue,
+        date_fin_prevue: dateFinPrevue,
+      };
+      localStorage.setItem("bna_chantiers_dates_overrides", JSON.stringify(overrides));
+    } catch {
+      // ignorer
+    }
+  }
+
+  // 2. Persistance Supabase si id UUID
+  if (supabase && typeof chantierId === "string" && chantierId.length === 36) {
+    try {
+      await supabase
+        .from("chantiers")
+        .update({
+          date_debut_prevue: dateDebutPrevue || null,
+          date_fin_prevue: dateFinPrevue || null,
+        })
+        .eq("id", chantierId);
+    } catch (err) {
+      console.warn("Erreur mise à jour dates chantier Supabase :", err);
+    }
+  }
+}
+

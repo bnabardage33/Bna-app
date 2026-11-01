@@ -17,6 +17,7 @@ import type { Chantier } from "@/types/metier";
 import {
   buildUnifiedPlanning,
   generateMermaidGantt,
+  NATURES_CONFIG,
   type UnifiedPlanningItem,
 } from "@/lib/services/planningService";
 import { getRendezVous, type RendezVous } from "@/lib/services/rendezVousService";
@@ -184,11 +185,22 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
                 className="p-2.5 flex items-center justify-between gap-2 cursor-pointer hover:bg-white transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-2 h-2 rounded-full shrink-0 bg-bna-copper" />
+                  <div
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: it.dotColor }}
+                    title={NATURES_CONFIG[it.natureKey]?.label}
+                  />
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-bna-anthracite truncate">
-                      {it.titre}
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-bold text-bna-anthracite truncate">
+                        {it.titre}
+                      </p>
+                      <span
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${it.badgeColorClass}`}
+                      >
+                        {NATURES_CONFIG[it.natureKey]?.label || it.natureKey}
+                      </span>
+                    </div>
                     <p className="text-[10px] text-bna-muted truncate">
                       {it.sousTitre || it.chantierNom}
                     </p>

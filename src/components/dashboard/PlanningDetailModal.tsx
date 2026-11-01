@@ -18,7 +18,10 @@ import {
   CalendarCheck2,
   HardHat,
 } from "lucide-react";
-import type { UnifiedPlanningItem } from "@/lib/services/planningService";
+import {
+  NATURES_CONFIG,
+  type UnifiedPlanningItem,
+} from "@/lib/services/planningService";
 import type { RendezVous } from "@/lib/services/rendezVousService";
 import { supprimerRendezVous, updateRendezVous } from "@/lib/services/rendezVousService";
 import { MermaidViewer } from "./MermaidViewer";
@@ -260,13 +263,16 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
                             {getIconForType(it.type)}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-sm text-bna-anthracite">
                                 {it.titre}
                               </span>
                               <span
                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${it.badgeColorClass}`}
                               >
+                                {NATURES_CONFIG[it.natureKey]?.label || it.natureKey}
+                              </span>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 border border-neutral-200">
                                 {it.statutLabel}
                               </span>
                             </div>
