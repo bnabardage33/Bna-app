@@ -312,6 +312,7 @@ export interface BardageBesoinsParams {
   hauteurM: number;
   estPignon?: boolean;
   hauteurFaiteM?: number | null;
+  ouvertures?: { largeurM: number; hauteurM: number }[];
 }
 
 /**
@@ -428,6 +429,23 @@ export function construireBesoinsBardage(
     quantite: nbGrilles,
   });
 
+  // 5b. Habillage des ouvertures (tableaux, linteaux, bavettes d'appui)
+  if (params.ouvertures && params.ouvertures.length > 0) {
+    const mlEncadrement = params.ouvertures.reduce(
+      (s, o) => s + (o.largeurM > 0 && o.hauteurM > 0 ? 2 * o.hauteurM + 2 * o.largeurM : 0),
+      0
+    );
+    const nbBarresHabillage = Math.ceil((mlEncadrement * 1.1) / 3.0);
+    if (nbBarresHabillage > 0) {
+      besoins.push({
+        categorie: "etancheite",
+        designation: "Profilés d'habillage ouvertures tableaux / linteaux / appuis (barre 3,00 m)",
+        unite: "barre(s)",
+        quantite: nbBarresHabillage,
+      });
+    }
+  }
+
   // 6. Isolation thermique par l'extérieur (ITE)
   if (pose.isolant.actif && pose.isolant.nbPaquetsACommander > 0) {
     besoins.push({
@@ -484,6 +502,12 @@ export async function saveCalepinageBardage(
     pose?: ResultatPose;
     bardageParams?: BardageBesoinsParams;
     besoinsPayloads?: BesoinPayload[];
+    facadesJson?: unknown;
+    resultatsJson?: Record<string, unknown>;
+    surfaceTotaleM2?: number;
+    surfaceOuverturesM2?: number;
+    nbPlaquesTotal?: number;
+    nbFacades?: number;
   }
 ): Promise<{ calepinage: CalepinageRow; besoins: BesoinMateriauRow[]; payloads: BesoinPayload[] }> {
   if (!params.entrepriseId) throw new Error("Entreprise non identifiée : enregistrement refusé");
@@ -547,6 +571,24 @@ export async function saveCalepinageBardage(
 
   const calepinage = newCal as CalepinageRow;
 
+  // 3b. Persister le détail multi-façades dans `calepinages_bardage` (si la table est présente)
+  if (params.facadesJson) {
+    try {
+      await (supabase.from("calepinages_bardage" as any) as any).insert({
+        calepinage_id: calepinage.id,
+        entreprise_id: params.entrepriseId,
+        nb_facades: params.nbFacades ?? 1,
+        surface_totale_m2: params.surfaceTotaleM2 ?? 0,
+        surface_ouvertures_m2: params.surfaceOuverturesM2 ?? 0,
+        nb_plaques_total: params.nbPlaquesTotal ?? 0,
+        facades_json: params.facadesJson,
+        resultats_json: params.resultatsJson ?? {},
+      });
+    } catch {
+      // Tolérance si la migration 012 n'a pas encore été passée manuellement sur la base distante
+    }
+  }
+
   // 4. Insérer les besoins matériaux rattachés à cette nouvelle version
   const rowsToInsert = payloads.map((b) => ({
     entreprise_id: params.entrepriseId,
@@ -572,5 +614,51 @@ export async function saveCalepinageBardage(
     payloads,
   };
 }
+
+/**
+ * Récupère la dernière version valide de calepinage Bardage/Façade d'un chantier
+ * (ainsi que ses détails multi-façades si présents dans `calepinages_bardage`).
+ */
+export async function getLatestCalepinageBardage(
+  supabase: SupabaseClient<Database>,
+  chantierId: string
+): Promise<{ calepinage: CalepinageRow; facadesJson?: unknown; detail?: { facades_json?: unknown } | null } | null> {
+  try {
+    const { data: calData, error } = await supabase
+      .from("calepinages")
+      .select("*")
+      .eq("chantier_id", chantierId)
+      .eq("metier", "facade")
+      .eq("statut", "valide")
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !calData) return null;
+    const calepinage = calData as CalepinageRow;
+
+    let facadesJson: unknown = undefined;
+    let detail: { facades_json?: unknown } | null = null;
+    try {
+      const { data: detData } = await (supabase.from("calepinages_bardage" as any) as any)
+        .select("*")
+        .eq("calepinage_id", calepinage.id)
+        .maybeSingle();
+      if (detData) {
+        detail = detData;
+        if (detData.facades_json) {
+          facadesJson = detData.facades_json;
+        }
+      }
+    } catch {
+      // ignorer si table absente
+    }
+
+    return { calepinage, facadesJson, detail };
+  } catch {
+    return null;
+  }
+}
+
 
 

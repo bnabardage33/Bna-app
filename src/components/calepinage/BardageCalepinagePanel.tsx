@@ -6,39 +6,45 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  DoorOpen,
+  FileDown,
   Layers,
   Maximize2,
   Minimize2,
   Minus,
   Package,
   Plus,
+  Printer,
   RotateCw,
   Ruler,
   Trash2,
   Truck,
   Wrench,
+  X,
 } from "lucide-react";
 import { calculerCalepinage } from "@/lib/bardage/calepinageCalcul";
 import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepinageCalcul";
 import { calculerPose, LABELS_FAMILLE } from "@/lib/bardage/poseCalcul";
 import type { FamillePose, ResultatPose } from "@/lib/bardage/poseCalcul";
 import { genererModules } from "@/lib/bardage/modules";
+import { genererPercagesPourModules } from "@/lib/bardage/percages";
 import type { CuttingListItem } from "@/lib/bardage/types";
 import {
   construireBesoinsBardage,
   fusionnerBesoinsBardage,
+  getLatestCalepinageBardage,
   saveCalepinageBardage,
 } from "@/lib/services/calepinageService";
 import { createClient } from "@/lib/supabase/client";
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 
 // V1 bardage : formulaire -> UN SEUL calcul (calculerCalepinage / calculerPose)
-// -> plan, débit et métré lisent tous cette même sortie (aucun recalcul dans l'UI).
+// -> plan, débit, métré et exports PDF/CSV lisent tous cette même sortie (aucun recalcul dans l'UI).
 
 type Vue = "plan" | "debit" | "metre";
 
 const num = (v: string, def = 0) => {
-  const n = parseFloat(v.replace(",", "."));
+  const n = parseFloat(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? n : def;
 };
 
@@ -48,7 +54,51 @@ const COULEUR: Record<PieceCalepinage["type"], string> = {
   pignon: "#F5E0A8",
 };
 
-function PlanSvg({ r, chevrons, largeurM, zoom }: { r: ResultatCalepinage; chevrons: number[]; largeurM: number; zoom?: number }) {
+export interface OuvertureFormState {
+  id: string;
+  nom: string;
+  type: "fenetre" | "porte" | "baie";
+  x: string;
+  y: string;
+  largeur: string;
+  hauteur: string;
+}
+
+export interface OuvertureCalculee {
+  id: string;
+  nom: string;
+  type: "fenetre" | "porte" | "baie";
+  xM: number;
+  yM: number;
+  largeurM: number;
+  hauteurM: number;
+  surfaceM2: number;
+}
+
+export interface PercageSvgPoint {
+  id: string;
+  xM: number;
+  ySvgM: number;
+  type: "fixe" | "coulissante" | "invisible";
+}
+
+function PlanSvg({
+  r,
+  chevrons,
+  largeurM,
+  ouvertures = [],
+  percages = [],
+  showPercages = false,
+  zoom,
+}: {
+  r: ResultatCalepinage;
+  chevrons: number[];
+  largeurM: number;
+  ouvertures?: OuvertureCalculee[];
+  percages?: PercageSvgPoint[];
+  showPercages?: boolean;
+  zoom?: number;
+}) {
   const [sel, setSel] = useState<string | null>(null);
   const H = r.hauteurFaiteM || r.rangeesHauteursM.reduce((a, b) => a + b, 0);
   const W = largeurM;
@@ -149,16 +199,96 @@ function PlanSvg({ r, chevrons, largeurM, zoom }: { r: ResultatCalepinage; chevr
               </g>
             );
           })}
+
+          {/* Ouvertures (fenêtres / portes / baies) */}
+          {ouvertures.map((o) => {
+            const ox = o.xM;
+            const oy = H - (o.yM + o.hauteurM);
+            return (
+              <g key={o.id}>
+                <rect
+                  x={ox}
+                  y={oy}
+                  width={o.largeurM}
+                  height={o.hauteurM}
+                  fill="rgba(224, 242, 254, 0.88)"
+                  stroke="#0284c7"
+                  strokeWidth={0.018}
+                />
+                <line
+                  x1={ox}
+                  y1={oy}
+                  x2={ox + o.largeurM}
+                  y2={oy + o.hauteurM}
+                  stroke="#0284c7"
+                  strokeWidth={0.008}
+                  strokeDasharray="0.04 0.03"
+                />
+                <line
+                  x1={ox + o.largeurM}
+                  y1={oy}
+                  x2={ox}
+                  y2={oy + o.hauteurM}
+                  stroke="#0284c7"
+                  strokeWidth={0.008}
+                  strokeDasharray="0.04 0.03"
+                />
+                <text
+                  x={ox + o.largeurM / 2}
+                  y={oy + o.hauteurM / 2 - 0.05}
+                  fontSize={Math.min(0.11, o.largeurM / 5)}
+                  fontWeight="bold"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#0369a1"
+                >
+                  {o.nom}
+                </text>
+                <text
+                  x={ox + o.largeurM / 2}
+                  y={oy + o.hauteurM / 2 + 0.07}
+                  fontSize={Math.min(0.085, o.largeurM / 6)}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fill="#075985"
+                >
+                  {Math.round(o.largeurM * 1000)}×{Math.round(o.hauteurM * 1000)} mm
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Chevrons d'ossature */}
           {chevrons.map((x, i) => (
             <line key={i} x1={x} x2={x} y1={0} y2={H} stroke="#2563eb" strokeWidth={0.006} strokeDasharray="0.05 0.04" opacity={0.55} />
           ))}
+
+          {/* Perçages DTU optionnels */}
+          {showPercages &&
+            percages.map((pt) => (
+              <circle
+                key={pt.id}
+                cx={pt.xM}
+                cy={pt.ySvgM}
+                r={0.018}
+                fill={pt.type === "fixe" ? "#dc2626" : "#d97706"}
+                stroke="#ffffff"
+                strokeWidth={0.005}
+              />
+            ))}
         </svg>
       </div>
       <div className="flex flex-wrap gap-2 text-[10px] text-bna-muted">
         <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.pleine }} />Pleine</span>
         <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.coupe }} />Rive / coupe</span>
         <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.pignon }} />Pignon</span>
+        {ouvertures.length > 0 && (
+          <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1 border border-sky-600 bg-sky-100" />Ouvertures ({ouvertures.length})</span>
+        )}
         <span><i className="inline-block w-4 border-t border-dashed border-blue-600 align-middle mr-1" />Chevrons (derrière)</span>
+        {showPercages && (
+          <span><i className="inline-block w-2 h-2 rounded-full bg-red-600 align-middle mr-1" />Perçages DTU ({percages.length})</span>
+        )}
       </div>
       {selected && (
         <p className="text-[11px] bg-bna-offwhite border border-bna-border rounded-lg p-2">
@@ -305,6 +435,7 @@ export interface FacadeFormState {
   sens: "horizontal" | "vertical";
   rotation: boolean;
   isolant: string;
+  ouvertures?: OuvertureFormState[];
 }
 
 const DEFAULT_FACADE: FacadeFormState = {
@@ -322,6 +453,7 @@ const DEFAULT_FACADE: FacadeFormState = {
   sens: "horizontal",
   rotation: false,
   isolant: "120",
+  ouvertures: [],
 };
 
 function evaluerFacade(f: FacadeFormState) {
@@ -352,12 +484,35 @@ function evaluerFacade(f: FacadeFormState) {
           autoriserRotation: f.rotation,
         })
       : null;
+
+    const ouverturesCalculees: OuvertureCalculee[] = (f.ouvertures ?? [])
+      .map((o) => {
+        const lM = num(o.largeur);
+        const hM = num(o.hauteur);
+        const xM = num(o.x);
+        const yM = num(o.y);
+        return {
+          id: o.id,
+          nom: o.nom || "Ouverture",
+          type: o.type || "fenetre",
+          xM,
+          yM,
+          largeurM: lM,
+          hauteurM: hM,
+          surfaceM2: Math.round(lM * hM * 100) / 100,
+        };
+      })
+      .filter((o) => o.largeurM > 0 && o.hauteurM > 0);
+
+    const surfaceOuverturesM2 =
+      Math.round(ouverturesCalculees.reduce((s, o) => s + o.surfaceM2, 0) * 100) / 100;
+
     const pose: ResultatPose = calculerPose(
       f.famille,
       L,
       f.pignon ? hf : Hm,
-      false,
-      0,
+      ouverturesCalculees.length > 0,
+      surfaceOuverturesM2,
       f.famille === "cassette" ? mL : 135,
       {
         moduleLargeurMm: mL,
@@ -367,15 +522,57 @@ function evaluerFacade(f: FacadeFormState) {
         typeIsolant: num(f.isolant, 0) > 0 ? "laine_roche" : "sans_isolant",
       }
     );
+
     const modulesGeneres = cal ? genererModules(cal, LABELS_FAMILLE[f.famille]) : null;
+
+    // Génération des perçages DTU pour affichage sur le plan 2D
+    const Hsvg = cal ? cal.hauteurFaiteM || cal.rangeesHauteursM.reduce((a, b) => a + b, 0) : hf;
+    const percagesSvg: PercageSvgPoint[] = [];
+    if (modulesGeneres) {
+      const modulesPourPercage = modulesGeneres.modules.map((m, idx) => ({
+        id: `${f.id}-mod-${idx}`,
+        zone_id: f.id,
+        entreprise_id: "bna",
+        group_number: m.group_number,
+        x_mm: m.x_mm,
+        y_mm: m.y_mm,
+        width_mm: m.width_mm,
+        height_mm: m.height_mm,
+        is_cut: m.is_cut,
+      }));
+      const rawPercages = genererPercagesPourModules(modulesPourPercage, {
+        modeFixation: f.famille === "cassette" ? "coulissante" : "fixe",
+      });
+      const modMap = new Map(modulesPourPercage.map((m) => [m.id, m]));
+      rawPercages.forEach((pt, idx) => {
+        const m = modMap.get(pt.module_id);
+        if (!m) return;
+        percagesSvg.push({
+          id: `${pt.module_id}-p-${idx}`,
+          xM: (m.x_mm + pt.x_mm) / 1000,
+          ySvgM: Hsvg - (m.y_mm + m.height_mm) / 1000 + pt.y_mm / 1000,
+          type: pt.type,
+        });
+      });
+    }
+
     const besoins = construireBesoinsBardage(cal, pose, {
       famille: f.famille,
       largeurM: L,
       hauteurM: f.pignon ? hf : Hm,
       estPignon: f.pignon,
       hauteurFaiteM: f.pignon ? hf : null,
+      ouvertures: ouverturesCalculees.map((o) => ({
+        largeurM: o.largeurM,
+        hauteurM: o.hauteurM,
+      })),
     });
-    const surfaceM2 = cal ? cal.surfaceZoneM2 : pose.isolant.surfaceNetteM2;
+
+    const surfaceBruteM2 = cal
+      ? cal.surfaceZoneM2
+      : Math.round(L * (f.pignon ? (Hm + hf) / 2 : Hm) * 100) / 100;
+    const surfaceM2 = Math.max(0, Math.round((surfaceBruteM2 - surfaceOuverturesM2) * 100) / 100);
+
     return {
       id: f.id,
       nom: f.nom,
@@ -384,7 +581,11 @@ function evaluerFacade(f: FacadeFormState) {
       pose,
       L,
       Hm: f.pignon ? hf : Hm,
+      surfaceBruteM2,
+      surfaceOuverturesM2,
       surfaceM2,
+      ouverturesCalculees,
+      percagesSvg,
       modulesGeneres,
       besoins,
     } as const;
@@ -412,19 +613,22 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
   const [facades, setFacades] = useState<FacadeFormState[]>([DEFAULT_FACADE]);
   const [activeId, setActiveId] = useState<string>(DEFAULT_FACADE.id);
   const [vue, setVue] = useState<Vue>("plan");
-  // Mode d'affichage du métré & débit : 'facade' (indépendant par façade) ou 'global' (cumul de toutes les façades)
   const [porteeMetre, setPorteeMetre] = useState<"facade" | "global">("facade");
+  const [showPercages, setShowPercages] = useState(false);
 
   const [copiedDebit, setCopiedDebit] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [activeVersion, setActiveVersion] = useState<number | null>(null);
   const [isCommandesOpen, setIsCommandesOpen] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const supabase = createClient();
 
-  // Chargement initial des façades mémorisées pour ce chantier
+  // Chargement initial des façades mémorisées (localStorage + Supabase calepinages_bardage)
   useEffect(() => {
+    let hasLocal = false;
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
@@ -432,15 +636,38 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.id) {
           setFacades(parsed);
           setActiveId(parsed[0].id);
-          return;
+          hasLocal = true;
         }
       }
     } catch {
       // ignorer
     }
-    setFacades([DEFAULT_FACADE]);
-    setActiveId(DEFAULT_FACADE.id);
-  }, [storageKey]);
+    if (!hasLocal) {
+      setFacades([DEFAULT_FACADE]);
+      setActiveId(DEFAULT_FACADE.id);
+    }
+
+    if (chantierId) {
+      getLatestCalepinageBardage(supabase, chantierId)
+        .then((latest) => {
+          if (!latest) {
+            setActiveVersion(null);
+            return;
+          }
+          setActiveVersion(latest.calepinage.version);
+          const dbFacades = latest.detail?.facades_json;
+          if (!hasLocal && Array.isArray(dbFacades) && dbFacades.length > 0 && (dbFacades[0] as any)?.id) {
+            setFacades(dbFacades as FacadeFormState[]);
+            setActiveId((dbFacades[0] as any).id);
+          }
+        })
+        .catch(() => {
+          // ignorer en mode hors-ligne
+        });
+    } else {
+      setActiveVersion(null);
+    }
+  }, [storageKey, chantierId, supabase]);
 
   // Sauvegarde automatique dans localStorage à chaque modification
   useEffect(() => {
@@ -467,6 +694,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
       id: newId,
       nom: `Façade ${nextNum}`,
       pignon: false,
+      ouvertures: [],
     };
     setFacades((prev) => [...prev, nouvelle]);
     setActiveId(newId);
@@ -481,6 +709,35 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
     }
   };
 
+  const handleAddOuverture = () => {
+    const current = activeFacade.ouvertures ?? [];
+    const nextIdx = current.length + 1;
+    const nouvelle: OuvertureFormState = {
+      id: `ouv-${Date.now()}-${nextIdx}`,
+      nom: `Fenêtre ${nextIdx}`,
+      type: "fenetre",
+      x: "1,2",
+      y: "1,0",
+      largeur: "1,2",
+      hauteur: "1,2",
+    };
+    updateActive({ ouvertures: [...current, nouvelle] });
+  };
+
+  const handleUpdateOuverture = (ouvId: string, patch: Partial<OuvertureFormState>) => {
+    const current = activeFacade.ouvertures ?? [];
+    updateActive({
+      ouvertures: current.map((o) => (o.id === ouvId ? { ...o, ...patch } : o)),
+    });
+  };
+
+  const handleDeleteOuverture = (ouvId: string) => {
+    const current = activeFacade.ouvertures ?? [];
+    updateActive({
+      ouvertures: current.filter((o) => o.id !== ouvId),
+    });
+  };
+
   // Calcul indépendant de chaque façade + cumul global automatique de toutes les façades
   const resultatsParFacade = useMemo(() => facades.map(evaluerFacade), [facades]);
   const calcul =
@@ -492,6 +749,8 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         !("erreur" in r)
     );
     const surfaceTotaleM2 = valides.reduce((s, r) => s + r.surfaceM2, 0);
+    const surfaceBruteTotaleM2 = valides.reduce((s, r) => s + r.surfaceBruteM2, 0);
+    const surfaceOuverturesTotaleM2 = valides.reduce((s, r) => s + r.surfaceOuverturesM2, 0);
     const nbPiecesTotales = valides.reduce((s, r) => s + (r.cal?.nbPiecesPosees ?? 0), 0);
     const nbPlaquesTotales = valides.reduce((s, r) => s + (r.cal?.nbPlaquesNecessaires ?? 0), 0);
     const surfaceAcheteeTotaleM2 = valides.reduce(
@@ -537,6 +796,8 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
       nbFacadesValides: valides.length,
       valides,
       surfaceTotaleM2,
+      surfaceBruteTotaleM2,
+      surfaceOuverturesTotaleM2,
       nbPiecesTotales,
       nbPlaquesTotales,
       tauxChuteGlobalPct,
@@ -584,6 +845,92 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
     }
   };
 
+  /** Export Excel (.CSV UTF-8 avec BOM et séparateur point-virgule) */
+  const handleExportCsv = () => {
+    if (cumulGlobal.valides.length === 0) return;
+    const rows: string[][] = [];
+    rows.push(["BOIS NATURE AMÉNAGEMENT — DOSSIER DE CALEPINAGE & MÉTRÉ BARDAGE"]);
+    rows.push([`Date d'édition`, new Date().toLocaleDateString("fr-FR")]);
+    rows.push([`Façades enregistrées`, String(cumulGlobal.nbFacadesValides)]);
+    rows.push([`Surface nette totale (m²)`, cumulGlobal.surfaceTotaleM2.toFixed(2).replace(".", ",")]);
+    rows.push([`Plaques brutes totales`, String(cumulGlobal.nbPlaquesTotales)]);
+    rows.push([]);
+
+    rows.push(["1. RÉCAPITULATIF PAR FAÇADE"]);
+    rows.push([
+      "Façade",
+      "Famille",
+      "Largeur (m)",
+      "Hauteur (m)",
+      "Surface brute (m²)",
+      "Ouvertures (m²)",
+      "Surface nette (m²)",
+      "Pièces posées",
+      "Plaques brutes",
+      "Chevrons 3m (barres)",
+    ]);
+    for (const r of cumulGlobal.valides) {
+      rows.push([
+        r.nom,
+        LABELS_FAMILLE[r.famille],
+        String(r.L).replace(".", ","),
+        String(r.Hm).replace(".", ","),
+        r.surfaceBruteM2.toFixed(2).replace(".", ","),
+        r.surfaceOuverturesM2.toFixed(2).replace(".", ","),
+        r.surfaceM2.toFixed(2).replace(".", ","),
+        String(r.cal?.nbPiecesPosees ?? 0),
+        String(r.cal?.nbPlaquesNecessaires ?? 0),
+        String(r.pose.nbSegmentsChevrons),
+      ]);
+    }
+    rows.push([]);
+
+    if (cumulGlobal.cuttingListGlobal.length > 0) {
+      rows.push(["2. BORDEREAU DE DÉBIT ATELIER (CUMUL TOUTES FAÇADES)"]);
+      rows.push(["Groupe", "Largeur (mm)", "Hauteur (mm)", "Quantité", "Surface (m²)", "Matériau"]);
+      for (const g of cumulGlobal.cuttingListGlobal) {
+        rows.push([
+          g.group_number,
+          String(g.width_mm),
+          String(g.height_mm),
+          String(g.count),
+          g.surface_m2.toFixed(2).replace(".", ","),
+          g.material,
+        ]);
+      }
+      rows.push([]);
+    }
+
+    rows.push(["3. BESOINS MATÉRIAUX & QUINCAILLERIE À COMMANDER"]);
+    rows.push(["Catégorie", "Désignation", "Quantité", "Unité"]);
+    for (const b of cumulGlobal.besoinsGlobaux) {
+      rows.push([
+        b.categorie,
+        b.designation,
+        String(b.quantite).replace(".", ","),
+        b.unite,
+      ]);
+    }
+
+    const csvContent =
+      "\uFEFF" +
+      rows
+        .map((r) =>
+          r.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(";")
+        )
+        .join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Calepinage_Bardage_BNA_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleSaveBardage = async () => {
     if (cumulGlobal.besoinsGlobaux.length === 0) return;
     if (!chantierId) {
@@ -602,7 +949,13 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         entrepriseId,
         chantierId,
         besoinsPayloads: cumulGlobal.besoinsGlobaux,
+        facadesJson: facades,
+        nbFacades: cumulGlobal.nbFacadesValides,
+        surfaceTotaleM2: cumulGlobal.surfaceTotaleM2,
+        surfaceOuverturesM2: cumulGlobal.surfaceOuverturesTotaleM2,
+        nbPlaquesTotal: cumulGlobal.nbPlaquesTotales,
       });
+      setActiveVersion(res.calepinage.version);
       setSaveMsg(
         `Calepinage Façade V${res.calepinage.version} enregistré : ${cumulGlobal.nbFacadesValides} façade(s) (${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²) · ${res.besoins.length} besoins matériaux générés.`
       );
@@ -631,9 +984,14 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
 
   return (
     <div className="mt-4 space-y-3 animate-in fade-in duration-100">
-      <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-        Quantitatif indicatif (DTU 41.2) à vérifier selon le procédé, le support et les prescriptions du fabricant.
-      </p>
+      <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+        <span>Quantitatif indicatif (DTU 41.2) à vérifier selon le procédé et le support.</span>
+        {activeVersion !== null && (
+          <span className="shrink-0 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            V{activeVersion} ✓
+          </span>
+        )}
+      </div>
 
       {/* BARRE MULTI-FAÇADES : SÉLECTION INDÉPENDANTE + AJOUT + RÉCAP GLOBAL */}
       <div className="p-2.5 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
@@ -643,7 +1001,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
               Façades du chantier ({facades.length})
             </span>
             <span className="text-[11px] font-semibold text-bna-anthracite">
-              Cumul : <b>{cumulGlobal.surfaceTotaleM2.toFixed(2)} m²</b>
+              Cumul net : <b>{cumulGlobal.surfaceTotaleM2.toFixed(2)} m²</b>
               {cumulGlobal.nbPlaquesTotales > 0 ? ` · ${cumulGlobal.nbPlaquesTotales} plaques` : ""}
             </span>
           </div>
@@ -749,6 +1107,96 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         )}
         <div><label className={lbl}>Isolant ITE (mm, 0 = aucun)</label>
           <input className={field} inputMode="numeric" value={activeFacade.isolant} onChange={(e) => updateActive({ isolant: e.target.value })} /></div>
+
+        {/* LOT E : OUVERTURES DE LA FAÇADE (FENÊTRES / PORTES / BAIES) */}
+        <div className="col-span-2 p-2.5 bg-neutral-50 border border-bna-border rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted flex items-center gap-1">
+              <DoorOpen className="w-3.5 h-3.5 text-bna-copper" />
+              Ouvertures — {activeFacade.nom} ({(activeFacade.ouvertures ?? []).length})
+            </span>
+            <button
+              type="button"
+              onClick={handleAddOuverture}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-white border border-bna-border text-bna-anthracite rounded-lg hover:border-bna-copper active:scale-95"
+            >
+              <Plus className="w-3 h-3 text-bna-copper" /> Ajouter fenêtre / porte
+            </button>
+          </div>
+          {(activeFacade.ouvertures ?? []).length > 0 && (
+            <div className="space-y-2">
+              {(activeFacade.ouvertures ?? []).map((o) => (
+                <div key={o.id} className="p-2 bg-white border border-bna-border rounded-lg space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      className="px-2 py-1 text-[11px] bg-bna-offwhite border border-bna-border rounded-md font-semibold"
+                      value={o.type}
+                      onChange={(e) =>
+                        handleUpdateOuverture(o.id, { type: e.target.value as OuvertureFormState["type"] })
+                      }
+                    >
+                      <option value="fenetre">Fenêtre</option>
+                      <option value="porte">Porte</option>
+                      <option value="baie">Baie vitrée</option>
+                    </select>
+                    <input
+                      className="flex-1 px-2 py-1 text-[11px] bg-white border border-bna-border rounded-md"
+                      value={o.nom}
+                      placeholder="Repère (ex: Fenêtre R+1)"
+                      onChange={(e) => handleUpdateOuverture(o.id, { nom: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteOuverture(o.id)}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded-md"
+                      title="Supprimer cette ouverture"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <div>
+                      <span className="text-[9px] text-bna-muted block">Pos X (m)</span>
+                      <input
+                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
+                        inputMode="decimal"
+                        value={o.x}
+                        onChange={(e) => handleUpdateOuverture(o.id, { x: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-bna-muted block">Pos Y sol (m)</span>
+                      <input
+                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
+                        inputMode="decimal"
+                        value={o.y}
+                        onChange={(e) => handleUpdateOuverture(o.id, { y: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-bna-muted block">Larg. (m)</span>
+                      <input
+                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
+                        inputMode="decimal"
+                        value={o.largeur}
+                        onChange={(e) => handleUpdateOuverture(o.id, { largeur: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-bna-muted block">Haut. (m)</span>
+                      <input
+                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
+                        inputMode="decimal"
+                        value={o.hauteur}
+                        onChange={(e) => handleUpdateOuverture(o.id, { hauteur: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {"erreur" in calcul ? (
@@ -803,9 +1251,31 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
           )}
 
           {vue === "plan" && calcul.cal && (
-            <PleinEcran titre={`Plan de calepinage — ${activeFacade.nom}`}>
-              {(zoom) => <PlanSvg r={calcul.cal!} chevrons={calcul.pose.positionsChevronsM} largeurM={calcul.L} zoom={zoom} />}
-            </PleinEcran>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-bna-anthracite cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showPercages}
+                    onChange={(e) => setShowPercages(e.target.checked)}
+                  />
+                  Afficher les perçages DTU ({calcul.percagesSvg.length} pts)
+                </label>
+              </div>
+              <PleinEcran titre={`Plan de calepinage — ${activeFacade.nom}`}>
+                {(zoom) => (
+                  <PlanSvg
+                    r={calcul.cal!}
+                    chevrons={calcul.pose.positionsChevronsM}
+                    largeurM={calcul.L}
+                    ouvertures={calcul.ouverturesCalculees}
+                    percages={calcul.percagesSvg}
+                    showPercages={showPercages}
+                    zoom={zoom}
+                  />
+                )}
+              </PleinEcran>
+            </div>
           )}
           {vue === "debit" && calcul.cal && (
             <div className="space-y-3">
@@ -857,7 +1327,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       ["Façades cumulées", `${cumulGlobal.nbFacadesValides} façade(s)`],
-                      ["Surface totale", `${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²`],
+                      ["Surface nette totale", `${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²`],
                       ["Pièces totales", `${cumulGlobal.nbPiecesTotales}`],
                       ["Plaques à commander", `${cumulGlobal.nbPlaquesTotales}`],
                       ["Chute nette moy.", `${cumulGlobal.tauxChuteGlobalPct.toFixed(1)} %`],
@@ -891,7 +1361,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
               ) : calcul.cal ? (
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    [`Surface (${activeFacade.nom})`, `${calcul.cal.surfaceZoneM2.toFixed(2)} m²`],
+                    [`Surface nette (${activeFacade.nom})`, `${calcul.surfaceM2.toFixed(2)} m²`],
                     ["Pièces posées", `${calcul.cal.nbPiecesPosees}`],
                     ["Plaques à commander", `${calcul.cal.nbPlaquesNecessaires}`],
                     ["Chute nette", `${calcul.cal.tauxChuteNettePct.toFixed(1)} %`],
@@ -906,7 +1376,7 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
                 </div>
               ) : (
                 <p className="p-2 bg-bna-offwhite border border-bna-border rounded-lg text-[11px] text-bna-muted">
-                  Lames ({LABELS_FAMILLE[activeFacade.famille]}) : surface {calcul.surfaceM2.toFixed(2)} m² ; métré d&apos;ossature et de fixations ci-dessous.
+                  Lames ({LABELS_FAMILLE[activeFacade.famille]}) : surface nette {calcul.surfaceM2.toFixed(2)} m² ; métré d&apos;ossature et de fixations ci-dessous.
                 </p>
               )}
 
@@ -960,8 +1430,28 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
             </div>
           )}
 
-          {/* ACTIONS LOT D : ENREGISTRER LES BESOINS GLOBAUX & OUVRIR COMMANDES FOURNISSEURS */}
-          <div className="space-y-2 pt-1">
+          {/* LOT F : EXPORTS PLAN & BORDEREAU PDF (A4) + EXCEL (.CSV) */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+            >
+              <Printer className="w-4 h-4 text-bna-copper" />
+              <span>Plan & Bordereau PDF (A4)</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+            >
+              <FileDown className="w-4 h-4 text-emerald-600" />
+              <span>Exporter Excel (.CSV)</span>
+            </button>
+          </div>
+
+          {/* ACTIONS LOT D & E : ENREGISTRER LES BESOINS GLOBAUX & OUVRIR COMMANDES FOURNISSEURS */}
+          <div className="space-y-2">
             <button
               type="button"
               onClick={handleSaveBardage}
@@ -1002,6 +1492,170 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
               onClose={() => setIsCommandesOpen(false)}
               chantierId={chantierId}
             />
+          )}
+
+          {/* MODAL FEUILLE OFFICIELLE A4 IMPRIMABLE / PDF VECTORIEL (LOT F) */}
+          {isPrintModalOpen && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+            >
+              <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-bna-border overflow-hidden my-auto max-h-[95vh] flex flex-col">
+                <div className="flex items-center justify-between px-4 py-3 bg-bna-offwhite border-b border-bna-border print:hidden">
+                  <div>
+                    <h3 className="text-sm font-bold text-bna-anthracite">
+                      Dossier A4 Calepinage & Bordereau de Débit BNA
+                    </h3>
+                    <p className="text-[11px] text-bna-muted">
+                      Prêt pour impression ou enregistrement en PDF A4 vectoriel
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-bna-copper text-white rounded-xl shadow-xs active:scale-95"
+                    >
+                      <Printer className="w-4 h-4" /> Imprimer / PDF A4
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPrintModalOpen(false)}
+                      className="p-2 bg-white border border-bna-border rounded-xl text-bna-anthracite"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-5 overflow-y-auto space-y-6 text-xs text-bna-anthracite">
+                  {/* En-tête BNA */}
+                  <div className="flex items-start justify-between border-b-2 border-bna-copper pb-3">
+                    <div>
+                      <p className="text-sm font-extrabold tracking-wide text-bna-copper uppercase">
+                        BOIS NATURE AMÉNAGEMENT (BNA)
+                      </p>
+                      <h4 className="text-base font-bold text-bna-anthracite">
+                        Dossier Technique de Calepinage, Débit & Métré Bardage
+                      </h4>
+                      <p className="text-[11px] text-bna-muted">
+                        Édité le {new Date().toLocaleDateString("fr-FR")}
+                        {activeVersion ? ` · Version validée V${activeVersion}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right bg-bna-offwhite p-2.5 rounded-xl border border-bna-border">
+                      <span className="text-[10px] uppercase font-bold text-bna-muted block">
+                        Cumul Chantier ({cumulGlobal.nbFacadesValides} façade(s))
+                      </span>
+                      <span className="text-sm font-extrabold text-bna-anthracite">
+                        {cumulGlobal.surfaceTotaleM2.toFixed(2)} m² nets
+                      </span>
+                      {cumulGlobal.nbPlaquesTotales > 0 && (
+                        <span className="text-[11px] text-bna-copper font-bold block">
+                          {cumulGlobal.nbPlaquesTotales} plaques brutes
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 1. Plans 2D cotés de chaque façade */}
+                  <div className="space-y-4">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                      1. Plans 2D cotés par façade
+                    </h5>
+                    {cumulGlobal.valides.map((r) => (
+                      <div key={r.id} className="p-3 border border-bna-border rounded-xl space-y-2 break-inside-avoid">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm text-bna-anthracite">
+                            {r.nom} — {LABELS_FAMILLE[r.famille]} ({r.L} × {r.Hm} m)
+                          </span>
+                          <span className="text-[11px] font-semibold text-bna-muted">
+                            Surface nette : <b>{r.surfaceM2.toFixed(2)} m²</b>
+                            {r.surfaceOuverturesM2 > 0 ? ` (ouvertures déduites : ${r.surfaceOuverturesM2.toFixed(2)} m²)` : ""}
+                            {r.cal ? ` · ${r.cal.nbPiecesPosees} pièces · ${r.cal.nbPlaquesNecessaires} plaques` : ""}
+                          </span>
+                        </div>
+                        {r.cal && (
+                          <PlanSvg
+                            r={r.cal}
+                            chevrons={r.pose.positionsChevronsM}
+                            largeurM={r.L}
+                            ouvertures={r.ouverturesCalculees}
+                            percages={r.percagesSvg}
+                            showPercages={showPercages}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 2. Bordereau de débit atelier */}
+                  {cumulGlobal.cuttingListGlobal.length > 0 && (
+                    <div className="space-y-2 break-inside-avoid">
+                      <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                        2. Bordereau de débit atelier ({cumulGlobal.cuttingListGlobal.length} formats regroupés)
+                      </h5>
+                      <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
+                        <thead>
+                          <tr className="bg-bna-offwhite">
+                            <th className="p-2 border border-bna-border">Groupe</th>
+                            <th className="p-2 border border-bna-border">Format L × H (mm)</th>
+                            <th className="p-2 border border-bna-border">Quantité</th>
+                            <th className="p-2 border border-bna-border">Surface (m²)</th>
+                            <th className="p-2 border border-bna-border">Matériau</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {cumulGlobal.cuttingListGlobal.map((g) => (
+                            <tr key={g.group_number}>
+                              <td className="p-2 border border-bna-border font-mono font-bold text-bna-copper">
+                                {g.group_number}
+                              </td>
+                              <td className="p-2 border border-bna-border font-semibold">
+                                {g.width_mm} × {g.height_mm} mm
+                              </td>
+                              <td className="p-2 border border-bna-border font-bold">{g.count} pce(s)</td>
+                              <td className="p-2 border border-bna-border">{g.surface_m2.toFixed(2)} m²</td>
+                              <td className="p-2 border border-bna-border">{g.material}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* 3. Besoins matériaux & quincaillerie */}
+                  <div className="space-y-2 break-inside-avoid">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                      3. Quantitatif global matériaux & quincaillerie ({cumulGlobal.besoinsGlobaux.length} postes)
+                    </h5>
+                    <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
+                      <thead>
+                        <tr className="bg-bna-offwhite">
+                          <th className="p-2 border border-bna-border">Catégorie</th>
+                          <th className="p-2 border border-bna-border">Désignation</th>
+                          <th className="p-2 border border-bna-border text-right">Quantité</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cumulGlobal.besoinsGlobaux.map((b, i) => (
+                          <tr key={i}>
+                            <td className="p-2 border border-bna-border uppercase font-bold text-[10px] text-bna-copper">
+                              {b.categorie}
+                            </td>
+                            <td className="p-2 border border-bna-border">{b.designation}</td>
+                            <td className="p-2 border border-bna-border text-right font-bold">
+                              {b.quantite} {b.unite}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}

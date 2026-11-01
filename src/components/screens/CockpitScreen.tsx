@@ -25,6 +25,7 @@ import { ConfirmModal } from "@/components/common/ConfirmModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   getCalepinagesTerrasseByChantier,
+  getLatestCalepinageBardage,
   getBesoinsByChantier,
   CalepinageVersionItem,
 } from "@/lib/services/calepinageService";
@@ -91,11 +92,14 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   const loadIndicators = useCallback(async () => {
     if (!chantier?.id) return;
     try {
-      // 1. Version active calepinage terrasse
+      // 1. Version active calepinage terrasse ou bardage
       if (chantier.metier === "terrasse") {
         const cals = await getCalepinagesTerrasseByChantier(supabase, chantier.id);
         const active = cals.find((c) => c.calepinage.statut === "valide");
         setLatestVersion(active ? active.calepinage.version : null);
+      } else if (chantier.metier === "facade") {
+        const activeBardage = await getLatestCalepinageBardage(supabase, chantier.id);
+        setLatestVersion(activeBardage ? activeBardage.calepinage.version : null);
       } else {
         setLatestVersion(null);
       }
@@ -389,7 +393,7 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {chantier.metier === "terrasse" && (
+              {(chantier.metier === "terrasse" || chantier.metier === "facade") && (
                 latestVersion !== null ? (
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                     V{latestVersion} ✓

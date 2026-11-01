@@ -2,7 +2,12 @@ import { calculerCalepinage } from "./calepinageCalcul.ts";
 import { decoupageModulesCentres, calculerBesoinsBardage, calculerPose } from "./poseCalcul.ts";
 import { genererPercagesPourModules } from "./percages.ts";
 import { genererModules } from "./modules.ts";
-import { construireBesoinsBardage, fusionnerBesoinsBardage } from "../services/calepinageService.ts";
+import {
+  construireBesoinsBardage,
+  fusionnerBesoinsBardage,
+  saveCalepinageBardage,
+  getLatestCalepinageBardage,
+} from "../services/calepinageService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -102,5 +107,153 @@ assert(
   chevronsCumules?.quantite === poseHpl.nbSegmentsChevrons + posePignon.nbSegmentsChevrons,
   "multi-façades : chevrons 3m globaux = Façade 1 + Pignon 2"
 );
+
+// 11. Lot E : Ouvertures (fenêtres / portes) -> profilés d'habillage tableaux/linteaux/bavettes
+const besoinsAvecOuvertures = construireBesoinsBardage(f, poseHpl, {
+  famille: "hpl",
+  largeurM: 8.4,
+  hauteurM: 3.2,
+  ouvertures: [
+    { largeurM: 1.2, hauteurM: 1.2 },
+    { largeurM: 0.9, hauteurM: 2.15 },
+  ],
+});
+const habillageOuv = besoinsAvecOuvertures.find((x) =>
+  x.designation.includes("Profilés d'habillage ouvertures")
+);
+// Périmètre = 2*(1.2+1.2) + 2*(0.9+2.15) = 4.8 + 6.1 = 10.9 ml -> ceil(10.9 * 1.1 / 3) = 4 barres de 3 m
+assert(
+  habillageOuv !== undefined && habillageOuv.quantite === 4,
+  "Lot E : ouvertures génèrent 4 barres de 3,00 m d'habillage tableaux/linteaux/appuis"
+);
+
+// 12. Lot E : Persistance Supabase structurée & versionnement (saveCalepinageBardage + getLatestCalepinageBardage)
+async function testPersistanceBardage() {
+  const memCalepinages: any[] = [];
+  const memDetails: any[] = [];
+  const memBesoins: any[] = [];
+
+  const mockSupabase: any = {
+    from(table: string) {
+      return {
+        select() {
+          const chain: any = {
+            _filters: {} as Record<string, any>,
+            eq(col: string, val: any) {
+              chain._filters[col] = val;
+              return chain;
+            },
+            order() {
+              const rows =
+                table === "calepinages"
+                  ? memCalepinages
+                      .filter(
+                        (r) =>
+                          (!chain._filters.chantier_id || r.chantier_id === chain._filters.chantier_id) &&
+                          (!chain._filters.metier || r.metier === chain._filters.metier) &&
+                          (!chain._filters.statut || r.statut === chain._filters.statut)
+                      )
+                      .sort((a, b) => b.version - a.version)
+                  : [];
+              const resObj: any = Promise.resolve({ data: rows, error: null });
+              resObj.limit = () => {
+                const p: any = Promise.resolve({ data: rows.slice(0, 1), error: null });
+                p.maybeSingle = () =>
+                  Promise.resolve({ data: rows[0] || null, error: null });
+                return p;
+              };
+              return resObj;
+            },
+            maybeSingle() {
+              const found = memDetails.find(
+                (d) => d.calepinage_id === chain._filters.calepinage_id
+              );
+              return Promise.resolve({ data: found || null, error: null });
+            },
+          };
+          return chain;
+        },
+        update(patch: any) {
+          const chain: any = {
+            eq() {
+              return chain;
+            },
+            then(resolve: any) {
+              if (table === "calepinages") {
+                memCalepinages.forEach((c) => Object.assign(c, patch));
+              }
+              return Promise.resolve({ error: null }).then(resolve);
+            },
+          };
+          return chain;
+        },
+        delete() {
+          const chain: any = {
+            eq() {
+              return chain;
+            },
+            then(resolve: any) {
+              if (table === "besoins_materiaux") memBesoins.length = 0;
+              return Promise.resolve({ error: null }).then(resolve);
+            },
+          };
+          return chain;
+        },
+        insert(payload: any) {
+          if (table === "calepinages") {
+            const row = { id: `cal-${memCalepinages.length + 1}`, ...payload };
+            memCalepinages.push(row);
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({ data: row, error: null });
+                  },
+                };
+              },
+            };
+          }
+          if (table === "calepinages_bardage") {
+            const row = { id: `cb-${memDetails.length + 1}`, ...payload };
+            memDetails.push(row);
+            return Promise.resolve({ data: row, error: null });
+          }
+          if (table === "besoins_materiaux") {
+            const rows = (Array.isArray(payload) ? payload : [payload]).map((r, i) => ({
+              id: `bm-${i + 1}`,
+              ...r,
+            }));
+            memBesoins.push(...rows);
+            return {
+              select() {
+                return Promise.resolve({ data: rows, error: null });
+              },
+            };
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
+      };
+    },
+  };
+
+  const savedV1 = await saveCalepinageBardage(mockSupabase, {
+    entrepriseId: "ent-1",
+    chantierId: "ch-1",
+    besoinsPayloads: besoinsCumules,
+    facadesJson: [{ id: "f1", nom: "Façade Avant" }, { id: "f2", nom: "Pignon Est" }],
+    nbFacades: 2,
+    surfaceTotaleM2: 47.88,
+    surfaceOuverturesM2: 3.38,
+    nbPlaquesTotal: f.nbPlaquesNecessaires + p.nbPlaquesNecessaires,
+  });
+  assert(savedV1.calepinage.version === 1, "Lot E : 1er enregistrement crée la V1");
+  assert(memDetails.length === 1 && memDetails[0].nb_facades === 2, "Lot E : détail multi-façades sauvegardé dans calepinages_bardage");
+
+  const latest = await getLatestCalepinageBardage(mockSupabase, "ch-1");
+  assert(latest !== null && latest.calepinage.version === 1, "Lot E : getLatestCalepinageBardage retrouve la V1 active");
+  assert(Array.isArray(latest?.detail?.facades_json) && latest!.detail!.facades_json.length === 2, "Lot E : les 2 façades sont restaurées depuis Supabase");
+}
+
+await testPersistanceBardage();
 
 console.log(`\n${passed} tests OK`);
