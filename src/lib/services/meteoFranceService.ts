@@ -133,9 +133,15 @@ const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
 let cachedSessionToken: { token: string; expiresAt: number } | null = null;
 
 /**
- * Récupère le token de session Météo-France via rot13 du cookie mfsession
+ * Récupère le token ou la clé Météo-France (variable d'environnement METEO_FRANCE_API_KEY ou session auto)
  */
 async function getMeteoFranceToken(): Promise<string> {
+  // 1. Si une clé d'API Météo-France est définie dans .env.local
+  if (process.env.METEO_FRANCE_API_KEY) {
+    return process.env.METEO_FRANCE_API_KEY.trim();
+  }
+
+  // 2. Sinon, récupération automatique de session officielle Météo-France
   const now = Date.now();
   if (cachedSessionToken && cachedSessionToken.expiresAt > now) {
     return cachedSessionToken.token;
@@ -249,6 +255,7 @@ export async function getDepartmentVigilance(deptCode: string): Promise<Departme
     const res = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`,
+        'apikey': token,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json, text/plain, */*',
       },
