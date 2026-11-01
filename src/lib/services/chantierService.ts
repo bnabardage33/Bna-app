@@ -159,6 +159,10 @@ export async function updateChantierRecord(
   return data as ChantierRow;
 }
 
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 /**
  * Mise à la corbeille sécurisée d'un chantier (Soft delete).
  * Récupère obligatoirement le user.id de la session Supabase active.
@@ -167,6 +171,12 @@ export async function softDeleteChantier(
   supabase: SupabaseClient<Database>,
   chantierId: string
 ): Promise<void> {
+  if (!isUuid(chantierId)) {
+    // Si c'est un identifiant mock ("martin", "dupont", etc.),
+    // il n'existe pas en base Supabase, on ne tente pas de requête SQL.
+    return;
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id) {
     throw new Error("Opération refusée : session non authentifiée ou expirée.");
@@ -190,6 +200,8 @@ export async function restoreChantier(
   supabase: SupabaseClient<Database>,
   chantierId: string
 ): Promise<void> {
+  if (!isUuid(chantierId)) return;
+
   const { error } = await (supabase.from("chantiers") as any)
     .update({
       deleted_at: null,
@@ -201,12 +213,41 @@ export async function restoreChantier(
 }
 
 /**
- * Suppression définitive d'un chantier (Hard delete - réservé au dirigeant)
+ * Suppression définitive d'un chantier (Hard delete - réservé au dirigeant).
+ * Purge dans l'ordre les enregistrements enfants dépendants pour éviter les erreurs FK.
  */
 export async function hardDeleteChantier(
   supabase: SupabaseClient<Database>,
   chantierId: string
 ): Promise<void> {
+  if (!isUuid(chantierId)) return;
+
+  // 1. Commandes fournisseurs rattachées au chantier
+  await (supabase.from("commandes_fournisseurs") as any)
+    .delete()
+    .eq("chantier_id", chantierId);
+
+  // 2. Besoins matériaux
+  await (supabase.from("besoins_materiaux") as any)
+    .delete()
+    .eq("chantier_id", chantierId);
+
+  // 3. Calepinages et détails terrasse
+  const { data: cals } = await (supabase.from("calepinages") as any)
+    .select("id")
+    .eq("chantier_id", chantierId);
+
+  if (cals && cals.length > 0) {
+    const calIds = cals.map((c: any) => c.id);
+    await (supabase.from("calepinages_terrasse") as any)
+      .delete()
+      .in("calepinage_id", calIds);
+    await (supabase.from("calepinages") as any)
+      .delete()
+      .eq("chantier_id", chantierId);
+  }
+
+  // 4. Suppression définitive du chantier
   const { error } = await supabase.from("chantiers").delete().eq("id", chantierId);
   if (error) throw error;
 }

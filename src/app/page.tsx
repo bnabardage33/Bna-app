@@ -20,7 +20,7 @@ import { CorbeilleModal } from "@/components/corbeille/CorbeilleModal";
 import { Chantier } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 import { createClient } from "@/lib/supabase/client";
-import { getChantiers, softDeleteChantier } from "@/lib/services/chantierService";
+import { getChantiers, softDeleteChantier, isUuid } from "@/lib/services/chantierService";
 import type { CalepinageVersionItem } from "@/lib/services/calepinageService";
 import { useAuth } from "@/lib/auth/useAuth";
 import { HardHat, Users, Trash2, FileText, Sparkles, Plus } from "lucide-react";
@@ -60,6 +60,17 @@ export default function HomePage() {
 
   const handleSoftDeleteChantier = async (chantierId: string) => {
     try {
+      if (!isUuid(chantierId)) {
+        // Mock chantier ("martin", "dupont", "bernard") : suppression locale en mémoire
+        setChantiers((prev) => {
+          const filtered = prev.filter((c) => c.id !== chantierId);
+          if (activeChantierId === chantierId && filtered.length > 0) {
+            setActiveChantierId(filtered[0].id);
+          }
+          return filtered;
+        });
+        return;
+      }
       await softDeleteChantier(supabase, chantierId);
       await refreshChantiers();
     } catch (err: any) {
