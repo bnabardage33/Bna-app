@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Header } from "@/components/dashboard/Header";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
-import { TaskListCard } from "@/components/dashboard/TaskListCard";
+import { PlanningCard } from "@/components/dashboard/PlanningCard";
 import { FeaturedProjectCard } from "@/components/dashboard/FeaturedProjectCard";
 import { RiskProjectsCard } from "@/components/dashboard/RiskProjectsCard";
 import { QuickLinksCard } from "@/components/dashboard/QuickLinksCard";
@@ -106,7 +106,14 @@ export default function HomePage() {
               allChantiers={chantiers}
               onSelectChantier={(id) => setActiveChantierId(id)}
             />
-            <TaskListCard />
+            <PlanningCard
+              chantiers={chantiers}
+              activeChantierId={activeChantierId}
+              onSelectChantier={(id) => {
+                setActiveChantierId(id);
+                setCurrentTab("cockpit");
+              }}
+            />
             <FeaturedProjectCard
               chantier={currentChantier}
               onOpenCockpit={() => {

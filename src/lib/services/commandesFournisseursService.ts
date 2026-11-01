@@ -143,6 +143,30 @@ export async function getCommandesByChantier(
 }
 
 /**
+ * Récupère l'ensemble des commandes fournisseurs de l'entreprise (pour le planning global).
+ */
+export async function getAllCommandes(
+  supabase: SupabaseClient
+): Promise<CommandeAvecFournisseur[]> {
+  try {
+    const { data, error } = await supabase
+      .from("commandes_fournisseurs")
+      .select(`
+        *,
+        fournisseur:fournisseurs(*)
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      return [];
+    }
+    return (data || []) as unknown as CommandeAvecFournisseur[];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Récupère le détail d'une commande avec son fournisseur et ses lignes figées.
  */
 export async function getCommandeDetail(
