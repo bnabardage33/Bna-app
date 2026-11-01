@@ -28,6 +28,7 @@ import {
 } from "@/lib/services/calepinageService";
 import { QuantitatifsTerrasseModal } from "@/components/calepinage/QuantitatifsTerrasseModal";
 import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
+import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
 
 interface CockpitScreenProps {
   chantier?: Chantier | null;
@@ -212,16 +213,8 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         </div>
       </section>
 
-      {/* 3. Météo ayant un impact opérationnel */}
-      <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
-        <b className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block mb-2">
-          MÉTÉO & RESTRICTION
-        </b>
-        <div className="flex items-center gap-2 p-2.5 bg-amber-50/80 border border-amber-200/60 rounded-xl text-xs text-amber-800">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-          <span>{chantier.meteoImpact.alerte}</span>
-        </div>
-      </section>
+      {/* 3. Météo du Chantier en Temps Réel + Prévisions Semaine + Vigilance Météo-France */}
+      <ChantierWeatherCard chantier={chantier} />
 
       {/* 4. Matériaux à surveiller (avec sémantique couleur BNA) */}
       <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">

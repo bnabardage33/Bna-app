@@ -133,6 +133,151 @@ export function getWmoInfo(code: number): {
 }
 
 /**
+ * Recherche de coordonnées précises par adresse de chantier
+ * Utilise api-adresse.data.gouv.fr puis Open-Meteo en repli
+ */
+const chantierGeoCache = new Map<string, GeoCity>();
+
+export async function getCityFromChantier(chantier: {
+  id?: string;
+  nom?: string;
+  adresse?: string | null;
+  code_postal?: string | null;
+  ville?: string | null;
+}): Promise<GeoCity> {
+  const ville = (chantier.ville || "").trim();
+  const cp = (chantier.code_postal || "").trim();
+  const adresse = (chantier.adresse || "").trim();
+
+  // Si aucune info de localisation n'est fournie, repli sur Générac par défaut
+  if (!ville && !cp && !adresse) {
+    return GENERAC_DEFAULT;
+  }
+
+  const cacheKey = `${adresse}|${cp}|${ville}`.toLowerCase();
+  if (chantierGeoCache.has(cacheKey)) {
+    return chantierGeoCache.get(cacheKey)!;
+  }
+
+  // 1. Tenter avec l'API officielle adresse gouvernementale française
+  const queryGov = [adresse, cp, ville].filter(Boolean).join(" ");
+  try {
+    const govUrl = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(
+      queryGov
+    )}&limit=1`;
+    const resGov = await fetch(govUrl, {
+      headers: { "User-Agent": "BnaApp/1.0" },
+    });
+    if (resGov.ok) {
+      const dataGov = await resGov.json();
+      if (dataGov.features && dataGov.features.length > 0) {
+        const feat = dataGov.features[0];
+        const [lon, lat] = feat.geometry.coordinates;
+        const props = feat.properties;
+        const city: GeoCity = {
+          id: Math.round(lat * 10000 + lon * 10000),
+          name: props.city || props.name || ville || "Chantier",
+          postcode: props.postcode || cp || undefined,
+          admin2: props.context ? props.context.split(",")[1]?.trim() : undefined,
+          country: "France",
+          latitude: lat,
+          longitude: lon,
+        };
+        chantierGeoCache.set(cacheKey, city);
+        return city;
+      }
+    }
+  } catch (err) {
+    console.warn("api-adresse.data.gouv.fr error, fallback to open-meteo:", err);
+  }
+
+  // 2. Repli sur l'API Open-Meteo Geocoding
+  const queryOm = [ville, cp].filter(Boolean).join(" ");
+  try {
+    const omResults = await searchCities(queryOm);
+    if (omResults.length > 0) {
+      const match = omResults[0];
+      chantierGeoCache.set(cacheKey, match);
+      return match;
+    }
+  } catch (err) {
+    console.warn("Open-Meteo geocoding error:", err);
+  }
+
+  // 3. Fallback avec les coordonnées de Générac mais le nom du chantier
+  const fallbackCity: GeoCity = {
+    ...GENERAC_DEFAULT,
+    name: ville || chantier.nom || "Chantier",
+    postcode: cp || GENERAC_DEFAULT.postcode,
+  };
+  return fallbackCity;
+}
+
+/**
+ * Conseils opérationnels détaillés pour les corps d'état Terrasse & Bardage
+ */
+export interface MetierOperationalAdvice {
+  level: "ok" | "attention" | "alerte";
+  title: string;
+  terrasse: string;
+  bardage: string;
+  outillage: string;
+  bachage: boolean;
+}
+
+export function getMetierOperationalAdvice(
+  precipMm: number,
+  windGustKmH: number,
+  tempC: number
+): MetierOperationalAdvice {
+  // Cas 1 : Fortes intempéries ou rafales dangereuses ou gel
+  if (precipMm >= 2.5 || windGustKmH >= 55 || tempC <= 1) {
+    return {
+      level: "alerte",
+      title: "Interruption extérieure fortement conseillée",
+      terrasse:
+        tempC <= 1
+          ? "Risque de gel : interdiction de coller ou visser sur bois gelé (fissuration)."
+          : "Pluie soutenue : risque de dérapage sur lambourdes mouillées et dilatation rapide.",
+      bardage:
+        windGustKmH >= 55
+          ? `Rafales à ${Math.round(windGustKmH)} km/h : manipulation de lames et travail en hauteur dangereux.`
+          : "Interdire la pose de pare-pluie exposé à l'eau.",
+      outillage: "Électroportatif sous abri obligatoire. Débrancher les chargeurs extérieurs.",
+      bachage: true,
+    };
+  }
+
+  // Cas 2 : Averses éparses ou vent modéré
+  if (precipMm > 0.3 || windGustKmH >= 35 || tempC < 6) {
+    return {
+      level: "attention",
+      title: "Vigilance chantier & précaution bâchage",
+      terrasse:
+        precipMm > 0.3
+          ? "Humidité présente : essuyer avant traçage. Vérifier le jeu de dilatation (4 à 5 mm)."
+          : "Conditions acceptables, contrôler l'humidité des lambourdes avant vissage.",
+      bardage:
+        windGustKmH >= 35
+          ? `Vent moyen (${Math.round(windGustKmH)} km/h) : sécuriser la fixation des panneaux légers.`
+          : "Pose possible, anticiper la protection contre les infiltrations.",
+      outillage: "Protéger la table de sciage extérieure et les batteries du froid ou de l'humidité.",
+      bachage: precipMm > 0.3,
+    };
+  }
+
+  // Cas 3 : Conditions optimales
+  return {
+    level: "ok",
+    title: "Conditions favorables pour le chantier",
+    terrasse: "Temps sec optimal pour la pose de structure, calage des plots et fixation des lames.",
+    bardage: "Absence de vent fort : pose de pare-pluie, tasseaux et bardage en toute sécurité.",
+    outillage: "Découpes extérieures sans contrainte météorologique.",
+    bachage: false,
+  };
+}
+
+/**
  * Diagnostic terrain BNA pour les travaux extérieurs
  */
 export function getChantierDiagnosis(precipMm: number, windGustKmH: number, tempC: number): {

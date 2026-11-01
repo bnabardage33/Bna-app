@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Chantier, METIERS_CONFIG } from "@/types/metier";
 import { MOCK_CHANTIERS } from "@/data/mockChantiers";
+import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
 
 interface TerrainScreenProps {
   chantier?: Chantier | null;
@@ -26,6 +27,7 @@ export const TerrainScreen: React.FC<TerrainScreenProps> = ({
   chantier,
   onOpenCalepinage,
   onOpenCockpit,
+  onSelectChantier,
 }) => {
   if (!chantier) {
     return (
@@ -68,32 +70,11 @@ export const TerrainScreen: React.FC<TerrainScreenProps> = ({
         </div>
       </div>
 
-      {/* Météo + Impact opérationnel spécifique au chantier */}
-      <section className="bg-white border border-bna-border rounded-2xl p-4 shadow-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold tracking-wider text-bna-muted uppercase">
-            MÉTÉO & IMPACT OPÉRATIONNEL
-          </span>
-          <div className="w-8 h-8 rounded-lg bg-amber-50/80 border border-amber-200/60 flex items-center justify-center text-amber-700">
-            <CloudRain className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="mt-2">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-            <span>{chantier.meteoImpact.alerte}</span>
-          </div>
-          <div className="mt-2 p-2.5 bg-bna-offwhite rounded-xl border border-bna-border text-xs text-bna-anthracite space-y-1">
-            <p className="font-medium">Consignes chantier :</p>
-            <ul className="list-disc list-inside text-bna-muted space-y-0.5 text-[11px]">
-              {chantier.meteoImpact.consignes.map((c, idx) => (
-                <li key={idx}>{c}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
+      {/* Météo Automatique du Chantier + Prévisions Semaine + Vigilance Météo-France */}
+      <ChantierWeatherCard
+        chantier={chantier}
+        onSelectChantier={onSelectChantier}
+      />
 
       {/* 4 Actions Clés de Saisie Terrain */}
       <div className="grid grid-cols-2 gap-2.5">

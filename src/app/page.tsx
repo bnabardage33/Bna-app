@@ -101,7 +101,11 @@ export default function HomePage() {
               currentDate="Jeudi 29 octobre"
               onOpenAuth={() => setIsAuthOpen(true)}
             />
-            <WeatherCard />
+            <WeatherCard
+              chantier={currentChantier}
+              allChantiers={chantiers}
+              onSelectChantier={(id) => setActiveChantierId(id)}
+            />
             <TaskListCard />
             <FeaturedProjectCard
               chantier={currentChantier}
