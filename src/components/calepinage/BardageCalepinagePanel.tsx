@@ -1,11 +1,33 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AlertTriangle, Layers, Maximize2, Minimize2, Minus, Plus, RotateCw, Ruler, Wrench } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Layers,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Package,
+  Plus,
+  RotateCw,
+  Ruler,
+  Truck,
+  Wrench,
+} from "lucide-react";
 import { calculerCalepinage } from "@/lib/bardage/calepinageCalcul";
 import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepinageCalcul";
 import { calculerPose, LABELS_FAMILLE } from "@/lib/bardage/poseCalcul";
 import type { FamillePose, ResultatPose } from "@/lib/bardage/poseCalcul";
+import { genererModules } from "@/lib/bardage/modules";
+import {
+  construireBesoinsBardage,
+  saveCalepinageBardage,
+} from "@/lib/services/calepinageService";
+import { createClient } from "@/lib/supabase/client";
+import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommandesModal";
 
 // V1 bardage : formulaire -> UN SEUL calcul (calculerCalepinage / calculerPose)
 // -> plan, débit et métré lisent tous cette même sortie (aucun recalcul dans l'UI).
@@ -265,7 +287,17 @@ function PleinEcran({ titre, children }: { titre: string; children: (zoom?: numb
   );
 }
 
-export const BardageCalepinagePanel: React.FC = () => {
+export interface BardageCalepinagePanelProps {
+  chantierId?: string;
+  entrepriseId?: string;
+  onSaved?: () => void;
+}
+
+export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
+  chantierId,
+  entrepriseId,
+  onSaved,
+}) => {
   const [famille, setFamille] = useState<FamillePose>("hpl");
   const [largeur, setLargeur] = useState("8,4");
   const [hauteur, setHauteur] = useState("3,2");
@@ -280,6 +312,13 @@ export const BardageCalepinagePanel: React.FC = () => {
   const [isolant, setIsolant] = useState("120");
   const [vue, setVue] = useState<Vue>("plan");
 
+  const [copiedDebit, setCopiedDebit] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [isCommandesOpen, setIsCommandesOpen] = useState(false);
+
+  const supabase = createClient();
   const panneau = famille === "hpl" || famille === "cassette";
 
   const calcul = useMemo(() => {
@@ -305,11 +344,75 @@ export const BardageCalepinagePanel: React.FC = () => {
         epaisseurIsolantMm: num(isolant, 0),
         typeIsolant: num(isolant, 0) > 0 ? "laine_roche" : "sans_isolant",
       });
-      return { cal, pose, L, Hm: pignon ? hf : Hm } as const;
+      const modulesGeneres = cal ? genererModules(cal, LABELS_FAMILLE[famille]) : null;
+      const besoins = construireBesoinsBardage(cal, pose, {
+        famille,
+        largeurM: L,
+        hauteurM: pignon ? hf : Hm,
+        estPignon: pignon,
+        hauteurFaiteM: pignon ? hf : null,
+      });
+      return { cal, pose, L, Hm: pignon ? hf : Hm, modulesGeneres, besoins } as const;
     } catch (e) {
       return { erreur: e instanceof Error ? e.message : "Calcul impossible." } as const;
     }
   }, [famille, largeur, hauteur, pignon, faite, modL, modH, plqL, plqH, sens, rotation, isolant, panneau]);
+
+  const handleCopyBordereau = async () => {
+    if ("erreur" in calcul || !calcul.modulesGeneres) return;
+    const lines = [
+      `BORDEREAU DE DÉBIT BNA — ${LABELS_FAMILLE[famille]} (${calcul.L} × ${calcul.Hm} m)`,
+      calcul.cal ? `Plaques brutes (${calcul.cal.plaqueBruteLongueurMm}×${calcul.cal.plaqueBruteLargeurMm} mm) : ${calcul.cal.nbPlaquesNecessaires}` : "",
+      ...calcul.modulesGeneres.cuttingList.map(
+        (g) => `• ${g.group_number} : ${g.count} × ${g.width_mm} × ${g.height_mm} mm (${g.surface_m2.toFixed(2)} m²)`
+      ),
+    ].filter(Boolean);
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setCopiedDebit(true);
+      setTimeout(() => setCopiedDebit(false), 2200);
+    } catch {
+      // ignorer
+    }
+  };
+
+  const handleSaveBardage = async () => {
+    if ("erreur" in calcul) return;
+    if (!chantierId) {
+      setSaveErr("Sélectionne d'abord un chantier en haut de la fenêtre pour enregistrer les besoins.");
+      return;
+    }
+    if (!entrepriseId) {
+      setSaveErr("Connecte-toi à ton compte entreprise pour enregistrer sur le chantier.");
+      return;
+    }
+    setIsSaving(true);
+    setSaveErr(null);
+    setSaveMsg(null);
+    try {
+      const res = await saveCalepinageBardage(supabase, {
+        entrepriseId,
+        chantierId,
+        cal: calcul.cal,
+        pose: calcul.pose,
+        bardageParams: {
+          famille,
+          largeurM: calcul.L,
+          hauteurM: calcul.Hm,
+          estPignon: pignon,
+          hauteurFaiteM: pignon ? calcul.Hm : null,
+        },
+      });
+      setSaveMsg(
+        `Calepinage Façade V${res.calepinage.version} enregistré (${res.besoins.length} besoins matériaux générés à commander).`
+      );
+      if (onSaved) onSaved();
+    } catch (e: any) {
+      setSaveErr(e?.message || "Erreur lors de l'enregistrement des besoins bardage.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const field = "w-full px-2.5 py-2 text-xs bg-white border border-bna-border rounded-lg focus:outline-none focus:ring-1 focus:ring-bna-copper";
   const lbl = "text-[10px] font-bold uppercase tracking-wider text-bna-muted block mb-1";
@@ -370,7 +473,7 @@ export const BardageCalepinagePanel: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-bna-offwhite rounded-xl border border-bna-border text-xs font-semibold">
-            {([["plan", "Plan", Layers], ["debit", "Débit", Ruler], ["metre", "Métré", Wrench]] as const).map(([k, label, Icon]) => (
+            {([["plan", "Plan", Layers], ["debit", "Débit", Ruler], ["metre", "Métré & Cmd", Wrench]] as const).map(([k, label, Icon]) => (
               <button key={k} type="button" onClick={() => setVue(k)}
                 disabled={!calcul.cal && k !== "metre"}
                 className={`py-2 rounded-lg flex items-center justify-center gap-1 disabled:opacity-40 ${vue === k ? "bg-white shadow-xs border border-bna-border text-bna-anthracite" : "text-bna-muted"}`}>
@@ -392,12 +495,48 @@ export const BardageCalepinagePanel: React.FC = () => {
             </PleinEcran>
           )}
           {vue === "debit" && calcul.cal && (
-            <PleinEcran titre="Plan de débit des plaques">
-              {(zoom) => <DebitSvg r={calcul.cal!} zoom={zoom} />}
-            </PleinEcran>
+            <div className="space-y-3">
+              {calcul.modulesGeneres && (
+                <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted">
+                      Bordereau de débit atelier ({calcul.modulesGeneres.cuttingList.length} formats)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyBordereau}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-bna-copper hover:underline"
+                    >
+                      {copiedDebit ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedDebit ? "Copié !" : "Copier"}</span>
+                    </button>
+                  </div>
+                  <div className="divide-y divide-bna-border/60 text-xs bg-white rounded-lg border border-bna-border overflow-hidden">
+                    {calcul.modulesGeneres.cuttingList.map((g) => (
+                      <div key={g.group_number} className="px-2.5 py-1.5 flex items-center justify-between">
+                        <div>
+                          <span className="font-mono font-bold text-[11px] text-bna-copper mr-2">{g.group_number}</span>
+                          <span className="font-semibold text-bna-anthracite">
+                            {g.width_mm} × {g.height_mm} mm
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <b className="text-bna-anthracite">{g.count} pce(s)</b>
+                          <span className="text-[10px] text-bna-muted ml-1.5">({g.surface_m2.toFixed(2)} m²)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <PleinEcran titre="Plan de débit des plaques">
+                {(zoom) => <DebitSvg r={calcul.cal!} zoom={zoom} />}
+              </PleinEcran>
+            </div>
           )}
           {(vue === "metre" || !calcul.cal) && (
-            <div className="space-y-2 text-xs">
+            <div className="space-y-3 text-xs">
               {calcul.cal ? (
                 <div className="grid grid-cols-2 gap-2">
                   {[
@@ -419,10 +558,93 @@ export const BardageCalepinagePanel: React.FC = () => {
                   Lames ({LABELS_FAMILLE[famille]}) : le plan de plaques ne s&apos;applique pas ; métré d&apos;ossature et de fixations ci-dessous.
                 </p>
               )}
+
+              {/* LISTE DES BESOINS MATÉRIAUX & QUINCAILLERIE POUR COMMANDE FOURNISSEUR */}
+              <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5 text-bna-copper" />
+                    Besoins matériaux & quincaillerie ({calcul.besoins.length} postes)
+                  </span>
+                </div>
+                <div className="divide-y divide-bna-border/60 bg-white rounded-lg border border-bna-border overflow-hidden">
+                  {calcul.besoins.map((b, idx) => (
+                    <div key={idx} className="px-2.5 py-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-bna-copper block">
+                          {b.categorie}
+                        </span>
+                        <span className="text-[11px] font-medium text-bna-anthracite block leading-snug">
+                          {b.designation}
+                        </span>
+                      </div>
+                      <span className="font-bold text-xs text-bna-anthracite shrink-0 bg-neutral-100 px-2 py-1 rounded-md border border-bna-border">
+                        {b.quantite} {b.unite}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <ul className="space-y-1 text-[11px] text-slate-700 list-disc list-inside bg-neutral-50 p-3 rounded-xl border border-bna-border/80">
                 {calcul.pose.remarques.map((t, i) => <li key={i}>{t}</li>)}
               </ul>
             </div>
+          )}
+
+          {saveMsg && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{saveMsg}</span>
+            </div>
+          )}
+          {saveErr && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{saveErr}</span>
+            </div>
+          )}
+
+          {/* ACTIONS LOT D : ENREGISTRER LES BESOINS & OUVRIR COMMANDES FOURNISSEURS */}
+          <div className="space-y-2 pt-1">
+            <button
+              type="button"
+              onClick={handleSaveBardage}
+              disabled={isSaving || !chantierId}
+              className={`w-full min-h-[44px] text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98] ${
+                isSaving || !chantierId
+                  ? "bg-neutral-300 cursor-not-allowed"
+                  : "bg-bna-copper hover:bg-bna-copper-hover shadow-copper"
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>
+                {isSaving
+                  ? "Enregistrement en cours..."
+                  : chantierId
+                  ? "Enregistrer sur le chantier & Générer les besoins"
+                  : "Choisis un chantier en haut pour enregistrer"}
+              </span>
+            </button>
+
+            {chantierId && (
+              <button
+                type="button"
+                onClick={() => setIsCommandesOpen(true)}
+                className="w-full min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+              >
+                <Truck className="w-4 h-4 text-bna-copper" />
+                <span>Ouvrir Matériaux & Commandes Fournisseurs</span>
+              </button>
+            )}
+          </div>
+
+          {chantierId && (
+            <MateriauxCommandesModal
+              isOpen={isCommandesOpen}
+              onClose={() => setIsCommandesOpen(false)}
+              chantierId={chantierId}
+            />
           )}
         </>
       )}

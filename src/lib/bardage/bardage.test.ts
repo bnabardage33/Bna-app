@@ -1,6 +1,8 @@
 import { calculerCalepinage } from "./calepinageCalcul.ts";
-import { decoupageModulesCentres, calculerBesoinsBardage } from "./poseCalcul.ts";
+import { decoupageModulesCentres, calculerBesoinsBardage, calculerPose } from "./poseCalcul.ts";
 import { genererPercagesPourModules } from "./percages.ts";
+import { genererModules } from "./modules.ts";
+import { construireBesoinsBardage } from "../services/calepinageService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -63,5 +65,22 @@ assert(perc.length === 4, "perçages : 4 par panneau plein");
 // 7. Besoins bardage
 const b = calculerBesoinsBardage(0, 8.4, 3.2);
 assert(b.mlChevrons > 0 && b.nbEquerres > 0 && b.nbChevilles === b.nbEquerres * 2, "besoins : chevrons, équerres, chevilles cohérents");
+
+// 8. Lot D : Bordereau de débit (groupes de pièces identiques)
+const mods = genererModules(f, "HPL Compact");
+assert(mods.cuttingList.reduce((s, g) => s + g.count, 0) === f.nbPiecesPosees, "bordereau : Σ quantités groupes = nb pièces posées");
+assert(mods.cuttingList.length === 2, "bordereau 8,40×3,20 : 2 formats de pièces (pleines 1000×640 + rives 200×640)");
+
+// 9. Lot D : Besoins matériaux complets pour commande fournisseur (HPL avec ITE)
+const poseHpl = calculerPose("hpl", 8.4, 3.2, false, 0, 1000, {
+  moduleLargeurMm: 1000, moduleHauteurMm: 600, sensPose: "horizontal",
+  epaisseurIsolantMm: 120, typeIsolant: "laine_roche",
+});
+const besoinsHpl = construireBesoinsBardage(f, poseHpl, { famille: "hpl", largeurM: 8.4, hauteurM: 3.2 });
+assert(besoinsHpl.some((x) => x.categorie === "panneaux" && x.quantite === f.nbPlaquesNecessaires), "besoins HPL : plaques brutes égales au calepinage");
+assert(besoinsHpl.some((x) => x.categorie === "ossature" && x.quantite === poseHpl.nbSegmentsChevrons), "besoins HPL : chevrons 3m présents");
+assert(besoinsHpl.some((x) => x.categorie === "equerres"), "besoins HPL : équerres Isolco présentes");
+assert(besoinsHpl.some((x) => x.categorie === "isolant" && x.quantite === poseHpl.isolant.nbPaquetsACommander), "besoins HPL : paquets d'isolant ITE présents");
+assert(besoinsHpl.every((x) => x.quantite > 0 && x.designation.length > 0), "besoins HPL : toutes les lignes ont une quantité > 0");
 
 console.log(`\n${passed} tests OK`);

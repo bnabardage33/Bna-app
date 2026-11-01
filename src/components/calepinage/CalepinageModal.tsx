@@ -140,15 +140,18 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   const supabase = createClient();
 
   // Sélection du chantier quand le modal est ouvert hors contexte chantier
-  const [chantiersTerrasse, setChantiersTerrasse] = useState<Chantier[]>([]);
+  const [allChantiers, setAllChantiers] = useState<Chantier[]>([]);
   const [selectedChantierId, setSelectedChantierId] = useState("");
   const chantierId = chantierIdProp || selectedChantierId || undefined;
+  const chantiersTerrasse = allChantiers.some((c) => c.metier === selectedMetier)
+    ? allChantiers.filter((c) => c.metier === selectedMetier)
+    : allChantiers;
 
   useEffect(() => {
     if (!isOpen || chantierIdProp) return;
     getChantiers(supabase, { fallbackToMocks: false })
-      .then((list) => setChantiersTerrasse(list.filter((c) => c.metier === "terrasse")))
-      .catch(() => setChantiersTerrasse([]));
+      .then((list) => setAllChantiers(list))
+      .catch(() => setAllChantiers([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, chantierIdProp]);
 
@@ -802,7 +805,13 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
           </div>
         )}
 
-        {selectedMetier === "facade" && <BardageCalepinagePanel />}
+        {selectedMetier === "facade" && (
+          <BardageCalepinagePanel
+            chantierId={chantierId}
+            entrepriseId={entreprise?.id}
+            onSaved={onCalepinageSaved}
+          />
+        )}
 
         {selectedMetier === "cloture" && (
           <div className="mt-4 p-4 bg-bna-offwhite rounded-2xl border border-bna-border text-center space-y-2 animate-in fade-in duration-100">

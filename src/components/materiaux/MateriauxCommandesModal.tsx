@@ -40,13 +40,28 @@ interface MateriauxCommandesModalProps {
   chantierNom?: string;
 }
 
-const CATEGORIES_ORDRE = ["lames", "lambourdes", "plots", "fixations"];
+const CATEGORIES_ORDRE = [
+  "panneaux",
+  "lames",
+  "ossature",
+  "lambourdes",
+  "equerres",
+  "plots",
+  "isolant",
+  "etancheite",
+  "fixations",
+];
 
 const CATEGORIES_LABELS: Record<string, { label: string; icon: any }> = {
-  lames: { label: "LAMES", icon: Layers },
+  panneaux: { label: "PANNEAUX / CASSETTES", icon: Layers },
+  lames: { label: "LAMES / CLINS", icon: Layers },
+  ossature: { label: "OSSATURE & CHEVRONS", icon: Package },
   lambourdes: { label: "LAMBOURDES", icon: Package },
+  equerres: { label: "ÉQUERRES DE FIXATION", icon: Package },
   plots: { label: "PLOTS", icon: Package },
-  fixations: { label: "FIXATIONS", icon: Package },
+  isolant: { label: "ISOLATION ITE", icon: Layers },
+  etancheite: { label: "ÉTANCHÉITÉ & PROFILÉS", icon: Package },
+  fixations: { label: "FIXATIONS & ANCRAGES", icon: Package },
 };
 
 const STATUT_BADGES: Record<

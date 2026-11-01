@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, CalepinageRow, CalepinageTerrasseRow, BesoinMateriauRow } from "../../types/database.types.ts";
 import type { CalepinageParams, CalepinageResult } from "../calepinage.ts";
 import { calculerCalepinageTerrasse } from "../calepinage.ts";
+import type { ResultatCalepinage } from "../bardage/calepinageCalcul.ts";
+import type { FamillePose, ResultatPose } from "../bardage/poseCalcul.ts";
+import { LABELS_FAMILLE } from "../bardage/poseCalcul.ts";
 
 export interface FullCalepinageTerrasse {
   calepinage: CalepinageRow;
@@ -235,7 +238,7 @@ export interface BesoinsChantierResult {
 }
 
 /**
- * Récupère les besoins d'un chantier, séparés entre actifs (liés au calepinage terrasse valide
+ * Récupère les besoins d'un chantier, séparés entre actifs (liés au calepinage valide
  * avec statut a_commander) et historique (archivés/annulés/commandés/reçus).
  */
 export async function getBesoinsByChantier(
@@ -243,18 +246,16 @@ export async function getBesoinsByChantier(
   chantierId: string
 ): Promise<BesoinsChantierResult> {
   try {
-    // 1. Calepinage terrasse actuellement valide
-    const { data: calValideData } = await supabase
+    // 1. Calepinages actuellement valides du chantier (terrasse, facade, cloture)
+    const { data: calValidesData } = await supabase
       .from("calepinages")
       .select("id, version")
       .eq("chantier_id", chantierId)
-      .eq("metier", "terrasse")
-      .eq("statut", "valide")
-      .order("version", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq("statut", "valide");
 
-    const calValide = calValideData as { id: string; version: number } | null;
+    const validCalIds = new Set<string>(
+      ((calValidesData as { id: string; version: number }[] | null) || []).map((c) => c.id)
+    );
 
     // 2. Dictionnaire des versions de tous les calepinages du chantier
     const { data: allCalsData } = await supabase
@@ -280,12 +281,12 @@ export async function getBesoinsByChantier(
 
     const actifs: BesoinMateriauRow[] = [];
     const historique: BesoinAvecVersion[] = [];
-    const calValideId = calValide?.id;
 
     for (const b of besoins as BesoinMateriauRow[]) {
       const version = b.calepinage_id ? versionMap.get(b.calepinage_id) : undefined;
-      // Les besoins actifs sont ceux du calepinage terrasse actuellement valide avec statut 'a_commander'
-      if (calValideId && b.calepinage_id === calValideId && b.statut === "a_commander") {
+      // Les besoins actifs sont ceux d'un calepinage valide (ou manuels sans calepinage_id) avec statut 'a_commander'
+      const isFromValidCal = b.calepinage_id ? validCalIds.has(b.calepinage_id) : true;
+      if (isFromValidCal && b.statut === "a_commander") {
         actifs.push(b);
       } else {
         historique.push({
@@ -304,4 +305,246 @@ export async function getBesoinsByChantier(
     return { actifs: [], historique: [], totalACommander: 0 };
   }
 }
+
+export interface BardageBesoinsParams {
+  famille: FamillePose;
+  largeurM: number;
+  hauteurM: number;
+  estPignon?: boolean;
+  hauteurFaiteM?: number | null;
+}
+
+/**
+ * Fonction pure : transforme les résultats du moteur Bardage (calepinage + ossature/ITE)
+ * en liste de besoins matériaux normalisés prêts pour les commandes fournisseurs.
+ */
+export function construireBesoinsBardage(
+  cal: ResultatCalepinage | null,
+  pose: ResultatPose,
+  params: BardageBesoinsParams
+): BesoinPayload[] {
+  const besoins: BesoinPayload[] = [];
+  const labelFamille = LABELS_FAMILLE[params.famille] || params.famille;
+
+  // 1. Parement (Plaques HPL / Cassettes ou Lames Bois / Composite)
+  if (cal && (params.famille === "hpl" || params.famille === "cassette")) {
+    if (cal.nbPlaquesNecessaires > 0) {
+      besoins.push({
+        categorie: "panneaux",
+        designation:
+          params.famille === "hpl"
+            ? `Plaques brutes HPL (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm) — pour ${cal.nbPiecesPosees} modules`
+            : `Cassettes / tôles (${cal.plaqueBruteLongueurMm} × ${cal.plaqueBruteLargeurMm} mm) — ${cal.nbPiecesPosees} pièces`,
+        unite: "plaque(s)",
+        quantite: cal.nbPlaquesNecessaires,
+      });
+    }
+  } else {
+    const surfParementM2 = Math.round(pose.isolant.surfaceNetteM2 * 1.1 * 10) / 10;
+    if (surfParementM2 > 0) {
+      besoins.push({
+        categorie: "lames",
+        designation: `Clins / Lames de bardage ${labelFamille} (+10% coupe)`,
+        unite: "m²",
+        quantite: surfParementM2,
+      });
+    }
+  }
+
+  // 2. Ossature primaire (Chevrons / Montants 3,00 m)
+  if (pose.nbSegmentsChevrons > 0) {
+    besoins.push({
+      categorie: "ossature",
+      designation:
+        params.famille === "cassette"
+          ? `Montants ossature aluminium 3,00 m (${pose.lineaireChevronsM.toFixed(1)} ml)`
+          : `Chevrons ossature bois 3,00 m (${pose.lineaireChevronsM.toFixed(1)} ml)`,
+      unite: "barre(s)",
+      quantite: pose.nbSegmentsChevrons,
+    });
+  }
+
+  // 3. Équerres de bardage (Porteuses point fixe & Guides coulissantes)
+  if (pose.nbEquerresPorteuses > 0) {
+    besoins.push({
+      categorie: "equerres",
+      designation: `Équerres porteuses point fixe — ${pose.isolant.modeleEquerreIsolco}`,
+      unite: "pce(s)",
+      quantite: pose.nbEquerresPorteuses,
+    });
+  }
+  if (pose.nbEquerresGuides > 0) {
+    besoins.push({
+      categorie: "equerres",
+      designation: `Équerres guides coulissantes — ${pose.isolant.modeleEquerreIsolco}`,
+      unite: "pce(s)",
+      quantite: pose.nbEquerresGuides,
+    });
+  }
+
+  // 4. Fixations & Ancrages (Chevilles maçonnerie, Vis ossature, Vis parement)
+  if (pose.nbChevillesMurales > 0) {
+    besoins.push({
+      categorie: "fixations",
+      designation: "Chevilles d'ancrage maçonnerie Ø12 mm (2 par équerre)",
+      unite: "pce(s)",
+      quantite: pose.nbChevillesMurales,
+    });
+  }
+  if (pose.nbVisChevronEquerre > 0) {
+    besoins.push({
+      categorie: "fixations",
+      designation: "Vis inox fixation chevron sur équerre (4/porteuse, 2/guide)",
+      unite: "vis",
+      quantite: pose.nbVisChevronEquerre,
+    });
+  }
+  if (pose.nbVisParement > 0) {
+    besoins.push({
+      categorie: "fixations",
+      designation:
+        params.famille === "hpl"
+          ? "Vis parement HPL tête laquée inox"
+          : "Vis / pointes inox A2/A4 parement bardage",
+      unite: "vis",
+      quantite: pose.nbVisParement,
+    });
+  }
+
+  // 5. Étanchéité & Ventilation (Bande EPDM & Grille anti-rongeurs)
+  if (pose.lineaireBandeEPDMM > 0) {
+    besoins.push({
+      categorie: "etancheite",
+      designation: "Bande EPDM protection chevrons 80-100 mm",
+      unite: "ml",
+      quantite: pose.lineaireBandeEPDMM,
+    });
+  }
+  const nbGrilles = Math.max(1, Math.ceil(params.largeurM / 2.5));
+  besoins.push({
+    categorie: "etancheite",
+    designation: "Profilé grille anti-rongeurs ventilation basse (barre 2,50 m)",
+    unite: "barre(s)",
+    quantite: nbGrilles,
+  });
+
+  // 6. Isolation thermique par l'extérieur (ITE)
+  if (pose.isolant.actif && pose.isolant.nbPaquetsACommander > 0) {
+    besoins.push({
+      categorie: "isolant",
+      designation: `Isolant ITE ${pose.isolant.typeIsolant} ép. ${pose.isolant.epaisseurMm} mm (${pose.isolant.surfaceACommanderM2} m²)`,
+      unite: "paquet(s)",
+      quantite: pose.isolant.nbPaquetsACommander,
+    });
+    if (pose.isolant.nbChevillesRosaces > 0) {
+      besoins.push({
+        categorie: "fixations",
+        designation: "Chevilles rosaces d'isolant ITE à frapper (5/m²)",
+        unite: "pce(s)",
+        quantite: pose.isolant.nbChevillesRosaces,
+      });
+    }
+  }
+
+  return besoins;
+}
+
+/**
+ * Enregistre une version de calepinage Bardage/Façade sur le chantier et génère
+ * la liste de ses besoins matériaux dans `besoins_materiaux` (statut `a_commander`),
+ * en archivant proprement l'éventuelle version façade précédente et ses besoins non commandés.
+ */
+export async function saveCalepinageBardage(
+  supabase: SupabaseClient<Database>,
+  params: {
+    entrepriseId: string;
+    chantierId: string;
+    userId?: string | null;
+    cal: ResultatCalepinage | null;
+    pose: ResultatPose;
+    bardageParams: BardageBesoinsParams;
+  }
+): Promise<{ calepinage: CalepinageRow; besoins: BesoinMateriauRow[]; payloads: BesoinPayload[] }> {
+  if (!params.entrepriseId) throw new Error("Entreprise non identifiée : enregistrement refusé");
+  if (!params.chantierId) throw new Error("Chantier non identifié : enregistrement refusé");
+
+  const payloads = construireBesoinsBardage(params.cal, params.pose, params.bardageParams);
+  if (payloads.length === 0) {
+    throw new Error("Aucun besoin matériau généré : vérifiez les dimensions de la façade");
+  }
+
+  // 1. Récupérer les versions existantes du métier 'facade' sur ce chantier
+  const { data: existingCals, error: listErr } = await supabase
+    .from("calepinages")
+    .select("*")
+    .eq("chantier_id", params.chantierId)
+    .eq("metier", "facade")
+    .order("version", { ascending: false });
+
+  if (listErr) throw listErr;
+
+  const calList = (existingCals as CalepinageRow[] | null) || [];
+  const maxVersion = calList.reduce((m, c) => Math.max(m, c.version), 0);
+  const nextVersion = maxVersion + 1;
+  const activeIds = calList.filter((c) => c.statut === "valide").map((c) => c.id);
+
+  // 2. Archiver l'ancienne version façade active et annuler ses besoins encore 'a_commander'
+  if (activeIds.length > 0) {
+    const { error: archErr } = await (supabase.from("calepinages") as any)
+      .update({ statut: "archive" })
+      .in("id", activeIds);
+    if (archErr) throw archErr;
+
+    const { error: cancelErr } = await (supabase.from("besoins_materiaux") as any)
+      .update({ statut: "annule" })
+      .in("calepinage_id", activeIds)
+      .eq("statut", "a_commander");
+    if (cancelErr) throw cancelErr;
+  }
+
+  // 3. Créer la nouvelle version 'valide'
+  const { data: newCal, error: insCalErr } = await (supabase.from("calepinages") as any)
+    .insert({
+      entreprise_id: params.entrepriseId,
+      chantier_id: params.chantierId,
+      metier: "facade",
+      version: nextVersion,
+      statut: "valide",
+      created_by: params.userId || null,
+    })
+    .select("*")
+    .single();
+
+  if (insCalErr || !newCal) {
+    throw insCalErr || new Error("Impossible de créer la version de calepinage façade");
+  }
+
+  const calepinage = newCal as CalepinageRow;
+
+  // 4. Insérer les besoins matériaux rattachés à cette nouvelle version
+  const rowsToInsert = payloads.map((b) => ({
+    entreprise_id: params.entrepriseId,
+    chantier_id: params.chantierId,
+    calepinage_id: calepinage.id,
+    categorie: b.categorie,
+    designation: b.designation,
+    unite: b.unite,
+    quantite: b.quantite,
+    origine: "calepinage",
+    statut: "a_commander",
+  }));
+
+  const { data: insertedBesoins, error: insBesErr } = await (supabase.from("besoins_materiaux") as any)
+    .insert(rowsToInsert)
+    .select("*");
+
+  if (insBesErr) throw insBesErr;
+
+  return {
+    calepinage,
+    besoins: (insertedBesoins as BesoinMateriauRow[]) || [],
+    payloads,
+  };
+}
+
 
