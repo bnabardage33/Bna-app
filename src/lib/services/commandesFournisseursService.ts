@@ -45,6 +45,7 @@ export interface CreerCommandeFournisseurParams {
   lignes: LigneCommandeInput[];
   commentaire?: string | null;
   reference_fournisseur?: string | null;
+  date_livraison_souhaitee?: string | null;
 }
 
 /**
@@ -208,6 +209,7 @@ export async function creerCommandeFournisseur(
     p_lignes: params.lignes,
     p_commentaire: params.commentaire?.trim() || null,
     p_reference_fournisseur: params.reference_fournisseur?.trim() || null,
+    p_date_livraison_souhaitee: params.date_livraison_souhaitee?.trim() || null,
   });
 
   if (error) {

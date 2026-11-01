@@ -161,6 +161,7 @@ export interface CommandeFournisseurRow {
   date_commande: string;
   commentaire: string | null;
   reference_fournisseur: string | null;
+  date_livraison_souhaitee: string | null;
   piece_jointe_url: string | null;
   created_at: string;
   updated_at: string;

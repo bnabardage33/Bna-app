@@ -50,6 +50,7 @@ export const NouvelleCommandeModal: React.FC<NouvelleCommandeModalProps> = ({
 
   const [lignes, setLignes] = useState<LigneCommandeInput[]>([]);
   const [commentaire, setCommentaire] = useState("");
+  const [dateLivraisonSouhaitee, setDateLivraisonSouhaitee] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +70,7 @@ export const NouvelleCommandeModal: React.FC<NouvelleCommandeModalProps> = ({
         }))
       );
       setCommentaire("");
+      setDateLivraisonSouhaitee("");
       setError(null);
       setShowNouveauFournisseur(false);
       setNouveauFournisseurNom("");
@@ -143,6 +145,7 @@ export const NouvelleCommandeModal: React.FC<NouvelleCommandeModalProps> = ({
         version_source_id: versionSourceId,
         lignes,
         commentaire: commentaire.trim() || null,
+        date_livraison_souhaitee: dateLivraisonSouhaitee.trim() || null,
       });
       onCommandeCreee(res.commande.id);
     } catch (e: any) {
@@ -335,7 +338,47 @@ export const NouvelleCommandeModal: React.FC<NouvelleCommandeModalProps> = ({
             )}
           </section>
 
-          {/* 3. Commentaire libre */}
+          {/* 3. Date de livraison souhaitée */}
+          <section className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block">
+                LIVRAISON SOUHAITÉE (OPTIONNEL)
+              </label>
+              <span className="text-[10px] text-bna-muted">Ex: 05/11/2026 matin</span>
+            </div>
+            <input
+              type="text"
+              value={dateLivraisonSouhaitee}
+              onChange={(e) => setDateLivraisonSouhaitee(e.target.value)}
+              placeholder="Ex: 05/11/2026 matin"
+              className="w-full text-xs font-semibold border border-bna-border rounded-xl px-3 py-2 bg-bna-offwhite text-bna-anthracite focus:outline-none focus:border-bna-copper"
+            />
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {["Matin", "Après-midi", "Dès que possible", "Semaine prochaine"].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => {
+                    const cleanDate = dateLivraisonSouhaitee.split(" ")[0];
+                    if (cleanDate && /^\d{2}\/\d{2}\/\d{4}$/.test(cleanDate)) {
+                      setDateLivraisonSouhaitee(`${cleanDate} ${suggestion.toLowerCase()}`);
+                    } else if (suggestion === "Dès que possible" || suggestion === "Semaine prochaine") {
+                      setDateLivraisonSouhaitee(suggestion);
+                    } else {
+                      setDateLivraisonSouhaitee(
+                        `${new Date().toLocaleDateString("fr-FR")} ${suggestion.toLowerCase()}`
+                      );
+                    }
+                  }}
+                  className="text-[10px] font-medium px-2 py-0.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 rounded-md border border-neutral-200 transition-colors"
+                >
+                  + {suggestion}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* 4. Commentaire libre */}
           <section className="space-y-1.5">
             <label className="text-[11px] font-bold tracking-wider text-bna-muted uppercase block">
               COMMENTAIRE / INSTRUCTIONS LIVRAISON (OPTIONNEL)

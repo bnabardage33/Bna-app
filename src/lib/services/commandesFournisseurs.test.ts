@@ -154,6 +154,7 @@ function createMockSupabase(db: DbState, sessionEntrepriseId: string | null) {
         date_commande: new Date().toISOString(),
         commentaire: args.p_commentaire || null,
         reference_fournisseur: args.p_reference_fournisseur || null,
+        date_livraison_souhaitee: args.p_date_livraison_souhaitee || null,
         piece_jointe_url: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -523,6 +524,29 @@ async function runTests() {
   assert(
     resCmdPartielle.lignes[0].besoin_source_id === "bes-1",
     "7.B: Liaison optionnelle besoin_source_id conservée pour commandes partielles"
+  );
+
+  // =========================================================================
+  // 8. V1.1 — DATE DE LIVRAISON SOUHAITÉE (ex: "05/11/2026 matin")
+  // =========================================================================
+  const resCmdLivraison = await creerCommandeFournisseur(sbA, {
+    chantier_id: "ch-1",
+    fournisseur_id: fPointP.id,
+    date_livraison_souhaitee: "05/11/2026 matin",
+    commentaire: "Livrer avec camion grue",
+    lignes: [
+      { designation: "Lambourdes urgentes", categorie: "lambourdes", unite: "barres", quantite: 15 },
+    ],
+  });
+  assert(
+    resCmdLivraison.commande.date_livraison_souhaitee === "05/11/2026 matin",
+    "8.A: V1.1 Date de livraison souhaitée '05/11/2026 matin' mémorisée avec succès"
+  );
+
+  const detailCmdLivraison = await getCommandeDetail(sbA, resCmdLivraison.commande.id);
+  assert(
+    detailCmdLivraison?.date_livraison_souhaitee === "05/11/2026 matin",
+    "8.B: V1.1 Date de livraison souhaitée restituée fidèlement dans le détail de commande"
   );
 
   console.log(`\n=== TOUTES LES ${passed} VÉRIFICATIONS COMMANDES FOURNISSEURS SONT RÉUSSIES ===`);

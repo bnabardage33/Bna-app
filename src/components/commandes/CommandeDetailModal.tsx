@@ -233,9 +233,17 @@ export const CommandeDetailModal: React.FC<CommandeDetailModalProps> = ({
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-bna-border/50 flex items-center justify-between text-[11px] text-bna-muted">
-                  <span>Date : {formatDateFr(commande.date_commande)}</span>
-                  <span>{lignes.length} article(s)</span>
+                <div className="pt-2 border-t border-bna-border/50 space-y-1.5 text-[11px] text-bna-muted">
+                  <div className="flex items-center justify-between">
+                    <span>Date commande : {formatDateFr(commande.date_commande)}</span>
+                    <span>{lignes.length} article(s)</span>
+                  </div>
+                  {commande.date_livraison_souhaitee && (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-bna-anthracite bg-white border border-bna-border rounded-lg px-2.5 py-1">
+                      <Truck className="w-3.5 h-3.5 text-bna-copper shrink-0" />
+                      <span>Livraison souhaitée : <span className="text-bna-copper">{commande.date_livraison_souhaitee}</span></span>
+                    </div>
+                  )}
                 </div>
               </div>
 
