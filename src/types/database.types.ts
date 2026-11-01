@@ -132,6 +132,51 @@ export interface CalepinageTerrasseRow {
   created_at: string;
 }
 
+export type StatutCommandeFournisseur =
+  | "brouillon"
+  | "envoyee"
+  | "commandee"
+  | "annulee";
+
+export interface FournisseurRow {
+  id: string;
+  entreprise_id: string;
+  nom: string;
+  telephone: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommandeFournisseurRow {
+  id: string;
+  entreprise_id: string;
+  chantier_id: string;
+  fournisseur_id: string;
+  version_source_id: string | null;
+  version_source_numero: number | null;
+  numero_commande: string;
+  statut: StatutCommandeFournisseur;
+  date_commande: string;
+  commentaire: string | null;
+  reference_fournisseur: string | null;
+  piece_jointe_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LigneCommandeFournisseurRow {
+  id: string;
+  commande_id: string;
+  besoin_source_id: string | null;
+  designation: string;
+  categorie: string;
+  unite: string;
+  quantite: number;
+  created_at: string;
+}
+
 export interface BesoinMateriauRow {
   id: string;
   entreprise_id: string;
@@ -219,6 +264,32 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<BesoinMateriauRow, "id">>;
+      };
+      fournisseurs: {
+        Row: FournisseurRow;
+        Insert: Omit<FournisseurRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<FournisseurRow, "id">>;
+      };
+      commandes_fournisseurs: {
+        Row: CommandeFournisseurRow;
+        Insert: Omit<CommandeFournisseurRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<CommandeFournisseurRow, "id">>;
+      };
+      lignes_commande_fournisseur: {
+        Row: LigneCommandeFournisseurRow;
+        Insert: Omit<LigneCommandeFournisseurRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<Omit<LigneCommandeFournisseurRow, "id">>;
       };
     };
   };

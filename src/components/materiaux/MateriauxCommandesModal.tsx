@@ -11,13 +11,25 @@ import {
   AlertCircle,
   Truck,
   RotateCcw,
+  Plus,
+  Send,
+  Ban,
+  FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   getBesoinsByChantier,
+  getCalepinagesTerrasseByChantier,
   BesoinsChantierResult,
   BesoinAvecVersion,
 } from "@/lib/services/calepinageService";
+import {
+  getCommandesByChantier,
+  CommandeAvecFournisseur,
+  StatutCommandeFournisseur,
+} from "@/lib/services/commandesFournisseursService";
+import { NouvelleCommandeModal } from "@/components/commandes/NouvelleCommandeModal";
+import { CommandeDetailModal } from "@/components/commandes/CommandeDetailModal";
 import type { BesoinMateriauRow } from "@/types/database.types";
 import { formatDateFr } from "@/lib/formatters";
 
@@ -37,6 +49,28 @@ const CATEGORIES_LABELS: Record<string, { label: string; icon: any }> = {
   fixations: { label: "FIXATIONS", icon: Package },
 };
 
+const STATUT_BADGES: Record<
+  StatutCommandeFournisseur,
+  { label: string; badgeClass: string }
+> = {
+  brouillon: {
+    label: "Brouillon",
+    badgeClass: "text-amber-700 bg-amber-50 border-amber-200",
+  },
+  envoyee: {
+    label: "Envoyée",
+    badgeClass: "text-blue-700 bg-blue-50 border-blue-200",
+  },
+  commandee: {
+    label: "Commandée",
+    badgeClass: "text-emerald-700 bg-emerald-50 border-emerald-200",
+  },
+  annulee: {
+    label: "Annulée",
+    badgeClass: "text-neutral-500 bg-neutral-100 border-neutral-300",
+  },
+};
+
 export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = ({
   isOpen,
   onClose,
@@ -48,6 +82,13 @@ export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = (
     historique: [],
     totalACommander: 0,
   });
+  const [commandes, setCommandes] = useState<CommandeAvecFournisseur[]>([]);
+  const [activeVersionNumero, setActiveVersionNumero] = useState<number | null>(null);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+
+  const [isNouvelleCmdOpen, setIsNouvelleCmdOpen] = useState(false);
+  const [selectedCommandeId, setSelectedCommandeId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -59,8 +100,22 @@ export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = (
     setLoading(true);
     setError(null);
     try {
-      const res = await getBesoinsByChantier(supabase, chantierId);
-      setData(res);
+      const [resBesoins, resCmds, resVersions] = await Promise.all([
+        getBesoinsByChantier(supabase, chantierId),
+        getCommandesByChantier(supabase, chantierId),
+        getCalepinagesTerrasseByChantier(supabase, chantierId),
+      ]);
+      setData(resBesoins);
+      setCommandes(resCmds);
+
+      const active = resVersions.find((v) => v.calepinage.statut === "valide");
+      if (active) {
+        setActiveVersionNumero(active.calepinage.version);
+        setActiveVersionId(active.calepinage.id);
+      } else {
+        setActiveVersionNumero(null);
+        setActiveVersionId(null);
+      }
     } catch (e: any) {
       setError(e?.message || "Erreur de chargement des besoins");
     } finally {
@@ -129,7 +184,7 @@ export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = (
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 pt-3 pb-8 space-y-4">
           {loading ? (
             <div className="py-12 text-center text-xs text-bna-muted animate-pulse">
-              Chargement des besoins matériaux...
+              Chargement des besoins et commandes...
             </div>
           ) : error ? (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
@@ -138,16 +193,106 @@ export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = (
             </div>
           ) : (
             <>
-              {/* 1. BESOINS ACTIFS */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
-                  BESOINS ACTIFS ({data.actifs.length})
-                </span>
-                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  Version en cours
-                </span>
+              {/* BOUTON CRÉER UNE COMMANDE FOURNISSEUR */}
+              <div className="flex items-center justify-between gap-2 p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-bold text-blue-900 block">
+                    Approvisionnement chantier
+                  </span>
+                  <span className="text-[11px] text-blue-700">
+                    Transformer les besoins actifs en commande fournisseur
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsNouvelleCmdOpen(true)}
+                  disabled={data.actifs.length === 0}
+                  className="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Créer commande</span>
+                </button>
               </div>
+
+              {/* 1. COMMANDES FOURNISSEURS DU CHANTIER */}
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-bna-copper" />
+                    <span>COMMANDES FOURNISSEURS ({commandes.length})</span>
+                  </span>
+                </div>
+
+                {commandes.length === 0 ? (
+                  <div className="p-4 bg-bna-offwhite rounded-2xl border border-dashed border-bna-border text-center space-y-1">
+                    <Truck className="w-5 h-5 text-bna-muted mx-auto" />
+                    <span className="text-xs font-bold text-bna-anthracite block">
+                      Aucune commande passée
+                    </span>
+                    <p className="text-[11px] text-bna-muted">
+                      Cliquez sur « Créer commande » pour générer un bon d&apos;approvisionnement.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {commandes.map((cmd) => {
+                      const badge = STATUT_BADGES[cmd.statut] || STATUT_BADGES.brouillon;
+                      return (
+                        <div
+                          key={cmd.id}
+                          className="p-3 bg-white rounded-2xl border border-bna-border shadow-xs hover:border-bna-copper/60 transition-colors flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-extrabold text-xs text-bna-anthracite">
+                                {cmd.numero_commande}
+                              </span>
+                              <span
+                                className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${badge.badgeClass}`}
+                              >
+                                {badge.label}
+                              </span>
+                              {cmd.version_source_numero && (
+                                <span className="text-[9px] font-bold text-neutral-500 bg-neutral-100 border border-neutral-200 px-1.5 py-0.2 rounded-sm">
+                                  V{cmd.version_source_numero}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-bna-muted mt-1">
+                              <span className="font-semibold text-bna-anthracite">
+                                {cmd.fournisseur?.nom}
+                              </span>
+                              <span>·</span>
+                              <span>{formatDateFr(cmd.date_commande)}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCommandeId(cmd.id)}
+                            className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-bna-anthracite text-xs font-bold rounded-xl transition-colors shrink-0"
+                          >
+                            Ouvrir
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              {/* 2. BESOINS ACTIFS */}
+              <section className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold tracking-wider text-bna-muted uppercase">
+                    BESOINS DU QUANTITATIF ACTIF ({data.actifs.length})
+                  </span>
+                  {activeVersionNumero && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Version V{activeVersionNumero}
+                    </span>
+                  )}
+                </div>
 
               {data.actifs.length === 0 ? (
                 <div className="p-5 bg-bna-offwhite rounded-2xl border border-dashed border-bna-border text-center space-y-1">
@@ -301,6 +446,31 @@ export const MateriauxCommandesModal: React.FC<MateriauxCommandesModalProps> = (
           </>
         )}
       </div>
+
+      {/* Modal Création Commande Fournisseur */}
+      <NouvelleCommandeModal
+        isOpen={isNouvelleCmdOpen}
+        onClose={() => setIsNouvelleCmdOpen(false)}
+        chantierId={chantierId}
+        chantierNom={chantierNom}
+        versionSourceId={activeVersionId}
+        versionSourceNumero={activeVersionNumero}
+        besoinsActifs={data.actifs}
+        onCommandeCreee={(cmdId) => {
+          setIsNouvelleCmdOpen(false);
+          loadData();
+          setSelectedCommandeId(cmdId);
+        }}
+      />
+
+      {/* Modal Détail Commande Fournisseur */}
+      <CommandeDetailModal
+        isOpen={!!selectedCommandeId}
+        onClose={() => setSelectedCommandeId(null)}
+        commandeId={selectedCommandeId}
+        chantierNom={chantierNom}
+        onStatusChanged={loadData}
+      />
     </div>
   </div>
 );
