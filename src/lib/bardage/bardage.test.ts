@@ -652,4 +652,44 @@ for (const p of pignonCal.pieces) {
   }
 }
 
+// F. Alignement précis de l'échelle verticale Y : P-02 à 449 mm et P-07 à 506 mm de leur base
+const p02 = pignonCal.pieces.find((p) => p.repere === "P-02");
+assert(
+  p02 !== undefined && p02.pignonDetails?.hLeftMm === 449,
+  `Pignon Y-align : P-02 est coupée exactement à 449 mm de sa base (obtenu: ${p02?.pignonDetails?.hLeftMm} mm)`
+);
+assert(
+  p02 !== undefined &&
+    Math.abs(getHauteurToit(0.2, 8.4, 3.2, 4.5) - (p02.yM + p02.pignonDetails!.hLeftMm / 1000)) <= 0.001,
+  "Pignon Y-align : Ligne de toit 2D/3D passe exactement au sommet du rampant de P-02 à x=0.20m"
+);
+
+const p07 = pignonCal.pieces.find((p) => p.repere === "P-07");
+assert(
+  p07 !== undefined && p07.pignonDetails?.hLeftMm === 506,
+  `Pignon Y-align : P-07 est coupée exactement à 506 mm de sa base (obtenu: ${p07?.pignonDetails?.hLeftMm} mm)`
+);
+assert(
+  p07 !== undefined &&
+    Math.abs(getHauteurToit(2.2, 8.4, 3.2, 4.5) - (p07.yM + p07.pignonDetails!.hLeftMm / 1000)) <= 0.001,
+  "Pignon Y-align : Ligne de toit 2D/3D passe exactement au sommet du rampant de P-07 à x=2.20m"
+);
+
+// G. Aucune pièce située au-dessus de la ligne réelle de toit
+for (const p of pignonCal.pieces) {
+  const pts = p.points ?? [
+    { xM: p.xM, yM: p.yM },
+    { xM: p.xM + p.largeurM, yM: p.yM },
+    { xM: p.xM + p.largeurM, yM: p.yM + p.hauteurM },
+    { xM: p.xM, yM: p.yM + p.hauteurM },
+  ];
+  for (const pt of pts) {
+    const roofY = getHauteurToit(pt.xM, 8.4, 3.2, 4.5);
+    assert(
+      pt.yM <= roofY + 0.001,
+      `Pignon Y-align : Point (${pt.xM}, ${pt.yM}) de ${p.repere} ne dépasse pas la toiture (${roofY.toFixed(3)})`
+    );
+  }
+}
+
 console.log(`\n${passed} tests OK`);

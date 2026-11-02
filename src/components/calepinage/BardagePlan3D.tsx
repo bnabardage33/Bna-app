@@ -275,9 +275,10 @@ function buildFacadePolys(
         { ...col, stroke: "#334155" },
         4,
         {
-          label: p.largeurM > 0.3 && p.hauteurM > 0.25 ? p.repere : undefined,
-          subLabel:
-            p.largeurM > 0.5 && p.hauteurM > 0.4
+          label: p.largeurM > 0.22 && p.hauteurM > 0.18 ? p.repere : undefined,
+          subLabel: p.pignonDetails
+            ? `${p.pignonDetails.cutWidthMm}×${p.pignonDetails.hLeftMm}/${p.pignonDetails.hRightMm}`
+            : p.largeurM > 0.45 && p.hauteurM > 0.35
               ? `${Math.round(p.largeurM * 1000)}×${Math.round(p.hauteurM * 1000)}`
               : undefined,
           piece: p,

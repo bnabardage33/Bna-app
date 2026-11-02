@@ -887,7 +887,7 @@ export function calculerCalepinage(input: CalepinageInput): ResultatCalepinage {
       let xReal1 = x1;
       let xReal2 = x2;
 
-      if (yBottom > hauteurMur) {
+      if (yBottom >= hauteurMur - 1e-4) {
         const t = (yBottom - hauteurMur) / deltaH;
         if (t >= 1) {
           xCumul += largeurPiece;

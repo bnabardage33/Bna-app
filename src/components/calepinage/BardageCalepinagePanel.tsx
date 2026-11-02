@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { BardagePlan3D } from "./BardagePlan3D";
-import { calculerCalepinage } from "@/lib/bardage/calepinageCalcul";
+import { calculerCalepinage, getHauteurToit } from "@/lib/bardage/calepinageCalcul";
 import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepinageCalcul";
 import { calculerPose, LABELS_FAMILLE } from "@/lib/bardage/poseCalcul";
 import type { FamillePose, ResultatPose } from "@/lib/bardage/poseCalcul";
@@ -158,17 +158,6 @@ function PlanSvg({
             {H.toFixed(2)} m ({Math.round(H * 1000)} mm)
           </text>
 
-          {/* Ligne de pente de toiture sous pignon */}
-          {r.estPignon && (
-            <polyline
-              points={`0,${H - (r.hauteurMurM ?? (r.hauteurFaiteM - (r.pentePct / 100) * (W / 2)))} ${W / 2},${H - r.hauteurFaiteM} ${W},${H - (r.hauteurMurM ?? (r.hauteurFaiteM - (r.pentePct / 100) * (W / 2)))}`}
-              fill="none"
-              stroke="#0284c7"
-              strokeWidth={0.018}
-              strokeDasharray="0.06 0.04"
-            />
-          )}
-
           {r.pieces.map((p) => {
             const cx = p.xM + p.largeurM / 2;
             const cy = H - (p.yM + p.hauteurM / 2);
@@ -182,7 +171,7 @@ function PlanSvg({
                   stroke={isSel ? "#1e293b" : "#4B4B4B"}
                   strokeWidth={isSel ? 0.016 : 0.008}
                 />
-                {p.largeurM > 0.25 && p.hauteurM > 0.22 && (
+                {p.largeurM > 0.18 && p.hauteurM > 0.14 && (
                   <>
                     <text
                       x={cx}
@@ -195,7 +184,7 @@ function PlanSvg({
                     >
                       {p.repere}
                     </text>
-                    {p.largeurM > 0.45 && p.hauteurM > 0.35 && (
+                    {p.largeurM > 0.35 && p.hauteurM > 0.28 && (
                       <text
                         x={cx}
                         y={cy + fSize * 0.65}
@@ -204,7 +193,9 @@ function PlanSvg({
                         dominantBaseline="middle"
                         fill={isSel ? "#FDE68A" : "#475569"}
                       >
-                        {Math.round(p.largeurM * 1000)}×{Math.round(p.hauteurM * 1000)}
+                        {p.pignonDetails
+                          ? `${p.pignonDetails.cutWidthMm}×${p.pignonDetails.hLeftMm}/${p.pignonDetails.hRightMm}`
+                          : `${Math.round(p.largeurM * 1000)}×${Math.round(p.hauteurM * 1000)}`}
                       </text>
                     )}
                   </>
@@ -271,10 +262,66 @@ function PlanSvg({
             );
           })}
 
-          {/* Chevrons d'ossature */}
-          {chevrons.map((x, i) => (
-            <line key={i} x1={x} x2={x} y1={0} y2={H} stroke="#2563eb" strokeWidth={0.006} strokeDasharray="0.05 0.04" opacity={0.55} />
-          ))}
+          {/* Chevrons d'ossature (arases sous le rampant de toiture) */}
+          {chevrons.map((x, i) => {
+            const hToit = r.estPignon
+              ? getHauteurToit(
+                  x,
+                  W,
+                  r.hauteurMurM ?? (r.hauteurFaiteM - (r.pentePct / 100) * (W / 2)),
+                  r.hauteurFaiteM
+                )
+              : H;
+            const yTopSvg = Math.max(0, H - hToit);
+            return (
+              <line
+                key={i}
+                x1={x}
+                x2={x}
+                y1={yTopSvg}
+                y2={H}
+                stroke="#2563eb"
+                strokeWidth={0.006}
+                strokeDasharray="0.05 0.04"
+                opacity={0.55}
+              />
+            );
+          })}
+
+          {/* Ligne de toiture sous pignon dessinée au premier plan avec arase égout */}
+          {r.estPignon && (
+            <g pointerEvents="none">
+              <polyline
+                points={`0,${H - getHauteurToit(0, W, r.hauteurMurM ?? H, r.hauteurFaiteM)} ${W / 2},${H - getHauteurToit(W / 2, W, r.hauteurMurM ?? H, r.hauteurFaiteM)} ${W},${H - getHauteurToit(W, W, r.hauteurMurM ?? H, r.hauteurFaiteM)}`}
+                fill="none"
+                stroke="#0284c7"
+                strokeWidth={0.02}
+                strokeDasharray="0.06 0.04"
+              />
+              {/* Ligne d'arase égout (repère de base du rampant) */}
+              <line
+                x1={-0.12}
+                y1={H - (r.hauteurMurM ?? H)}
+                x2={W + 0.12}
+                y2={H - (r.hauteurMurM ?? H)}
+                stroke="#0284c7"
+                strokeWidth={0.008}
+                strokeDasharray="0.04 0.03"
+                opacity={0.65}
+              />
+              <text
+                x={-0.15}
+                y={H - (r.hauteurMurM ?? H)}
+                fontSize={0.09}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fill="#0284c7"
+                fontWeight="bold"
+              >
+                Égout {(r.hauteurMurM ?? H).toFixed(2)} m
+              </text>
+            </g>
+          )}
 
           {/* Perçages DTU optionnels */}
           {showPercages &&
