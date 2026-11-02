@@ -350,4 +350,78 @@ assert(
   "Attestation Intempérie Bardage Bois : intègre humidimètre 13%-18%, acclimatation 72h et lame d'air 20 mm (DTU 41.2)"
 );
 
+// 15. NOUVEAU : Calcul géométrique des pignons, classification P-xx et couplage tête-bêche (Nesting trapèzes/triangles)
+const pignonTest = calculerCalepinage({
+  zoneLargeurM: 6.0,
+  zoneHauteurM: 2.5,
+  estPignon: true,
+  hauteurFaiteM: 4.5,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 563,
+  plaqueLongueurMm: 3050,
+  plaqueLargeurMm: 1300,
+});
+
+// A. Vérification de la classification stricte
+const piecesSousEgout = pignonTest.pieces.filter((p) => p.yM + p.hauteurM <= 2.5 + 1e-4);
+assert(
+  piecesSousEgout.every((p) => p.type !== "pignon" && !p.repere.startsWith("P-")),
+  "Pignon : Aucune pièce sous l'égout n'est classée à tort en P-xx (strictement M-xx ou R-xx)"
+);
+
+const piecesRampant = pignonTest.pieces.filter((p) => p.type === "pignon");
+assert(
+  piecesRampant.length > 0 && piecesRampant.every((p) => p.repere.startsWith("P-") && p.pignonDetails !== undefined),
+  "Pignon : Toutes les pièces traversées par la pente sont strictement classées en P-xx avec pignonDetails"
+);
+
+// B. Vérification des dimensions réelles (cutWidth × cutHeight)
+assert(
+  piecesRampant.some((p) => p.pignonDetails!.cutWidthMm < 1000 || p.pignonDetails!.cutHeightMm < 563),
+  "Pignon : Les pièces de pointe ont un cutWidth ou cutHeight inférieur à la cellule de grille brute (1000×563)"
+);
+
+// C. Vérification de la boîte englobante (largeurM et hauteurM)
+for (const pr of piecesRampant) {
+  assert(
+    Math.round(pr.largeurM * 1000) === pr.pignonDetails!.cutWidthMm &&
+      Math.round(pr.hauteurM * 1000) === pr.pignonDetails!.cutHeightMm,
+    `Pignon : Pièce ${pr.repere} largeurM (${pr.largeurM}) et hauteurM (${pr.hauteurM}) correspondent exactement à cutWidth (${pr.pignonDetails!.cutWidthMm}) et cutHeight (${pr.pignonDetails!.cutHeightMm})`
+  );
+}
+
+// D. Vérification du couplage tête-bêche (Nesting de trapèzes)
+assert(
+  (pignonTest.nbPiecesCouplees ?? 0) > 0 && (pignonTest.nbBlocsCouples ?? 0) > 0,
+  `Pignon : Couplage tête-bêche actif (${pignonTest.nbPiecesCouplees} pièces couplées, ${pignonTest.nbBlocsCouples} blocs)`
+);
+
+// E. Vérification des blocs couplés dans les plaques de débit
+const piecesDebitCouplees = pignonTest.plaquesDebit
+  .flatMap((pl) => pl.pieces)
+  .filter((p) => p.coupleAvec !== undefined);
+assert(
+  piecesDebitCouplees.length === pignonTest.nbBlocsCouples,
+  "Pignon : Nombre de blocs couplés dans plaquesDebit égal à nbBlocsCouples"
+);
+
+for (const b of piecesDebitCouplees) {
+  assert(
+    b.nom.includes("[Couplé]") && b.repere.includes("+"),
+    `Pignon : Bloc couplé ${b.repere} porte l'étiquette [Couplé]`
+  );
+  assert(
+    b.surfaceM2 > 0 && b.coupleAvec !== undefined,
+    "Pignon : Bloc couplé porte la référence et les cotes de la pièce associée"
+  );
+}
+
+// F. Vérification du rendement par plaque brute
+for (const pl of pignonTest.plaquesDebit) {
+  assert(
+    pl.tauxRendementPct > 0 && pl.tauxRendementPct <= 100,
+    `Pignon : Rendement plaque ${pl.index} valide (${pl.tauxRendementPct.toFixed(1)}%)`
+  );
+}
+
 console.log(`\n${passed} tests OK`);

@@ -294,8 +294,11 @@ function PlanSvg({
       </div>
       {selected && (
         <p className="text-[11px] bg-bna-offwhite border border-bna-border rounded-lg p-2">
-          <b>{selected.repere}</b> · {Math.round(selected.largeurM * 1000)} × {Math.round(selected.hauteurM * 1000)} mm ·{" "}
-          {selected.surfaceM2.toFixed(2)} m² · plaque n°{selected.plaqueIndex ?? "—"}
+          <b>{selected.repere}</b> ({selected.type === "pignon" ? "Pignon biseauté" : selected.type}) ·{" "}
+          {selected.pignonDetails
+            ? `${selected.pignonDetails.cutWidthMm} × ${selected.pignonDetails.cutHeightMm} mm (gauche : ${selected.pignonDetails.hLeftMm} mm / droite : ${selected.pignonDetails.hRightMm} mm)`
+            : `${Math.round(selected.largeurM * 1000)} × ${Math.round(selected.hauteurM * 1000)} mm`}{" "}
+          · {selected.surfaceM2.toFixed(2)} m² · plaque brute n°{selected.plaqueIndex ?? "—"}
         </p>
       )}
     </div>
@@ -305,6 +308,16 @@ function PlanSvg({
 function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
   return (
     <div className="space-y-3">
+      {r.nbBlocsCouples !== undefined && r.nbBlocsCouples > 0 && (
+        <div className="p-2.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-orange-900">
+            Couplage tête-bêche actif : {r.nbPiecesCouplees} pièces de pignon combinées ({r.nbBlocsCouples} bloc{r.nbBlocsCouples > 1 ? "s" : ""})
+          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-bna-copper border border-orange-300">
+            Nesting optimisé
+          </span>
+        </div>
+      )}
       {r.plaquesDebit.map((pl) => (
         <div key={pl.index} className="space-y-1">
           <p className="text-[11px] font-semibold text-bna-anthracite">
@@ -324,22 +337,106 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
                 <rect key={c.id} x={c.xMm} y={c.yMm} width={c.largeurMm} height={c.hauteurMm}
                   fill={c.reutilisable ? "#BBF7D0" : "#E5E5E5"} stroke="#9CA3AF" strokeWidth={4} />
               ))}
-              {pl.pieces.map((p) => (
-                <g key={`${p.id}-${p.xMm}-${p.yMm}`}>
-                  <rect x={p.xMm} y={p.yMm} width={p.largeurMm} height={p.hauteurMm} fill="#E7D9C9" stroke="#4B4B4B" strokeWidth={5} />
-                  {p.largeurMm > 200 && p.hauteurMm > 120 && (
-                    <text x={p.xMm + p.largeurMm / 2} y={p.yMm + p.hauteurMm / 2} fontSize={Math.min(85, p.largeurMm / 4.2)}
-                      fontWeight="bold" textAnchor="middle" dominantBaseline="middle" fill="#2B2B2B">
-                      {p.repere} ({p.largeurMm}×{p.hauteurMm})
-                    </text>
-                  )}
-                </g>
-              ))}
+              {pl.pieces.map((p) => {
+                const isCouple = !!p.coupleAvec;
+                const isPignonSeul = p.type === "pignon" && !isCouple && !!p.pignonDetails;
+
+                return (
+                  <g key={`${p.id}-${p.xMm}-${p.yMm}`}>
+                    {/* Rectangle capable ou bloc couplé */}
+                    <rect
+                      x={p.xMm}
+                      y={p.yMm}
+                      width={p.largeurMm}
+                      height={p.hauteurMm}
+                      fill="#E7D9C9"
+                      stroke="#4B4B4B"
+                      strokeWidth={5}
+                    />
+
+                    {/* Trait de coupe diagonal en pointillés pour bloc couplé tête-bêche */}
+                    {isCouple && p.pignonDetails && (
+                      <line
+                        x1={p.xMm}
+                        y1={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hLeftMm)}
+                        x2={p.xMm + p.largeurMm}
+                        y2={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hRightMm)}
+                        stroke="#EA580C"
+                        strokeWidth={6}
+                        strokeDasharray="18,12"
+                      />
+                    )}
+
+                    {/* Trait de pente en pointillés pour pignon seul */}
+                    {isPignonSeul && p.pignonDetails && (
+                      <line
+                        x1={p.xMm}
+                        y1={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hLeftMm)}
+                        x2={p.xMm + p.largeurMm}
+                        y2={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hRightMm)}
+                        stroke="#EA580C"
+                        strokeWidth={5}
+                        strokeDasharray="14,10"
+                      />
+                    )}
+
+                    {/* Étiquettes de cotes */}
+                    {p.largeurMm > 160 && p.hauteurMm > 90 && (
+                      <>
+                        {isCouple && p.coupleAvec ? (
+                          <text
+                            x={p.xMm + p.largeurMm / 2}
+                            y={p.yMm + p.hauteurMm / 2}
+                            fontSize={Math.min(65, Math.max(22, p.largeurMm / 6.8))}
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#2B2B2B"
+                          >
+                            <tspan x={p.xMm + p.largeurMm / 2} dy="-0.65em">
+                              {p.repere.split(" + ")[0]} ({p.pignonDetails?.cutWidthMm}×{p.pignonDetails?.hLeftMm}/{p.pignonDetails?.hRightMm})
+                            </tspan>
+                            <tspan x={p.xMm + p.largeurMm / 2} dy="1.3em" fill="#C15C3D">
+                              + {p.coupleAvec.repere} ({p.coupleAvec.pignonDetails?.cutWidthMm}×{p.coupleAvec.pignonDetails?.hLeftMm}/{p.coupleAvec.pignonDetails?.hRightMm}) [Couplé]
+                            </tspan>
+                          </text>
+                        ) : isPignonSeul && p.pignonDetails ? (
+                          <text
+                            x={p.xMm + p.largeurMm / 2}
+                            y={p.yMm + p.hauteurMm / 2}
+                            fontSize={Math.min(75, Math.max(24, p.largeurMm / 5.2))}
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#2B2B2B"
+                          >
+                            {p.repere} ({p.pignonDetails.cutWidthMm}×{p.pignonDetails.hLeftMm}/{p.pignonDetails.hRightMm})
+                          </text>
+                        ) : (
+                          <text
+                            x={p.xMm + p.largeurMm / 2}
+                            y={p.yMm + p.hauteurMm / 2}
+                            fontSize={Math.min(85, p.largeurMm / 4.2)}
+                            fontWeight="bold"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#2B2B2B"
+                          >
+                            {p.repere} ({p.largeurMm}×{p.hauteurMm})
+                          </text>
+                        )}
+                      </>
+                    )}
+                  </g>
+                );
+              })}
             </svg>
           </div>
         </div>
       ))}
-      <p className="text-[10px] text-bna-muted">Vert = chute réutilisable · gris = perte.</p>
+      <p className="text-[10px] text-bna-muted">
+        Vert = chute réutilisable · gris = perte · pointillé orange = ligne de coupe / couplage tête-bêche.
+      </p>
     </div>
   );
 }
