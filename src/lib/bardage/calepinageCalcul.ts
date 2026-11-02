@@ -150,6 +150,8 @@ export interface ResultatCalepinage {
   nbJoints: number;
   estPignon: boolean;
   hauteurFaiteM: number;
+  /** Hauteur à l'égout du mur (m) */
+  hauteurMurM?: number;
   pentePct: number;
   plaqueBruteLongueurMm: number;
   plaqueBruteLargeurMm: number;
@@ -1091,6 +1093,7 @@ export function calculerCalepinage(input: CalepinageInput): ResultatCalepinage {
     nbJoints: nbJointsVerticaux + nbJointsHorizontaux,
     estPignon,
     hauteurFaiteM: hauteurFaite,
+    hauteurMurM: hauteurMur,
     pentePct,
     plaqueBruteLongueurMm: rawLongueurMm,
     plaqueBruteLargeurMm: rawLargeurMm,

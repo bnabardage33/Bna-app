@@ -12,6 +12,9 @@ export interface Facade3DData {
   famille: FamillePose;
   L: number;
   Hm: number;
+  hMurM?: number;
+  hFaiteM?: number;
+  estPignon?: boolean;
   surfaceM2: number;
   cal: ResultatCalepinage | null;
   pose: ResultatPose;
@@ -63,11 +66,32 @@ function buildFacadePolys(
 ): Poly3D[] {
   const polys: Poly3D[] = [];
   const W = facade.L;
-  const H = facade.cal
-    ? facade.cal.hauteurFaiteM || facade.cal.rangeesHauteursM.reduce((a, b) => a + b, 0)
-    : facade.Hm;
-  const hMur = facade.cal ? facade.cal.rangeesHauteursM.reduce((a, b) => a + b, 0) : facade.Hm;
-  const estPignon = Boolean(facade.cal && facade.cal.hauteurFaiteM > hMur + 0.01);
+  const estPignon = Boolean(
+    facade.estPignon ??
+      facade.cal?.estPignon ??
+      (facade.cal?.hauteurFaiteM && facade.hMurM && facade.cal.hauteurFaiteM > facade.hMurM + 0.01)
+  );
+
+  const hFaite = facade.hFaiteM ?? facade.cal?.hauteurFaiteM ?? facade.Hm;
+  const hMur =
+    facade.hMurM ??
+    facade.cal?.hauteurMurM ??
+    (estPignon && facade.cal?.pentePct
+      ? hFaite - (facade.cal.pentePct / 100) * (W / 2)
+      : facade.Hm);
+  const H = estPignon ? hFaite : hMur;
+  const ridgeX = W / 2;
+  const hEgoutG = hMur;
+  const hEgoutD = hMur;
+
+  const getHauteurToit = (x: number) => {
+    if (!estPignon) return H;
+    if (x <= ridgeX) {
+      return hEgoutG + (x / (ridgeX || 1)) * (hFaite - hEgoutG);
+    } else {
+      return hEgoutD + ((W - x) / (W - ridgeX || 1)) * (hFaite - hEgoutD);
+    }
+  };
 
   const gap = opts.eclateFactor * 0.42; // Décalage entre couches en mode vue éclatée DTU
   const zMurBack = -0.2;
@@ -89,9 +113,9 @@ function buildFacadePolys(
       ? [
           { x: 0, y: 0, z },
           { x: W, y: 0, z },
-          { x: W, y: hMur, z },
-          { x: W / 2, y: H, z },
-          { x: 0, y: hMur, z },
+          { x: W, y: hEgoutD, z },
+          { x: ridgeX, y: hFaite, z },
+          { x: 0, y: hEgoutG, z },
         ]
       : [
           { x: 0, y: 0, z },
@@ -128,7 +152,7 @@ function buildFacadePolys(
     for (let i = 0; i < pts2d.length; i++) {
       const a = pts2d[i];
       const b = pts2d[(i + 1) % pts2d.length];
-      const isTopEdge = b.y >= a.y && (a.y > 0 || b.y > 0);
+      const isTopEdge = a.y > 0.05 && b.y > 0.05 && Math.abs(a.x - b.x) > 0.01;
       polys.push({
         id: `${baseId}-side-${i}`,
         pts: [
@@ -176,19 +200,42 @@ function buildFacadePolys(
   // 3. Chevrons d'ossature verticaux (calculés par calculerPose)
   if (opts.showChevrons) {
     const chevWidth = 0.055;
+    const jeuVentilationM = 0.03; // 30 mm de garde sous rampant (ventilation DTU)
     facade.pose.positionsChevronsM.forEach((cx, idx) => {
       const x0 = Math.max(0, cx - chevWidth / 2);
       const x1 = Math.min(W, cx + chevWidth / 2);
-      // Hauteur du chevron sous rampant si pignon
-      const hAtX = estPignon
-        ? hMur + (H - hMur) * (1 - Math.abs(cx - W / 2) / (W / 2 || 1))
-        : H;
-      const chev2d = [
-        { x: x0, y: 0 },
-        { x: x1, y: 0 },
-        { x: x1, y: Math.max(0.2, hAtX) },
-        { x: x0, y: Math.max(0.2, hAtX) },
-      ];
+
+      let chev2d: { x: number; y: number }[];
+      if (estPignon) {
+        const yTop0 = Math.max(0.15, getHauteurToit(x0) - jeuVentilationM);
+        const yTop1 = Math.max(0.15, getHauteurToit(x1) - jeuVentilationM);
+
+        if (x0 < ridgeX && x1 > ridgeX) {
+          const yPeak = Math.max(0.15, hFaite - jeuVentilationM);
+          chev2d = [
+            { x: x0, y: 0 },
+            { x: x1, y: 0 },
+            { x: x1, y: yTop1 },
+            { x: ridgeX, y: yPeak },
+            { x: x0, y: yTop0 },
+          ];
+        } else {
+          chev2d = [
+            { x: x0, y: 0 },
+            { x: x1, y: 0 },
+            { x: x1, y: yTop1 },
+            { x: x0, y: yTop0 },
+          ];
+        }
+      } else {
+        chev2d = [
+          { x: x0, y: 0 },
+          { x: x1, y: 0 },
+          { x: x1, y: H },
+          { x: x0, y: H },
+        ];
+      }
+
       pushExtrudedPolygon(
         `${facade.id}-chev-${idx}`,
         chev2d,
@@ -268,6 +315,32 @@ function buildFacadePolys(
   }
 
   return polys;
+}
+
+/**
+ * Calcule le vecteur normal unitaire d'un polygone 3D
+ */
+function getPolygonNormal(pts: Point3D[]): Point3D {
+  if (pts.length < 3) return { x: 0, y: 0, z: 1 };
+  const p0 = pts[0];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const ax = p1.x - p0.x;
+    const ay = p1.y - p0.y;
+    const az = p1.z - p0.z;
+    const bx = p2.x - p0.x;
+    const by = p2.y - p0.y;
+    const bz = p2.z - p0.z;
+    const nx = ay * bz - az * by;
+    const ny = az * bx - ax * bz;
+    const nz = ax * by - ay * bx;
+    const len = Math.hypot(nx, ny, nz);
+    if (len > 1e-6) {
+      return { x: nx / len, y: ny / len, z: nz / len };
+    }
+  }
+  return { x: 0, y: 0, z: 1 };
 }
 
 export const BardagePlan3D: React.FC<{
@@ -458,6 +531,18 @@ export const BardagePlan3D: React.FC<{
       const avgDepth = pPts.reduce((s, q) => s + q.depth, 0) / pPts.length;
       const cx = pPts.reduce((s, q) => s + q.sx, 0) / pPts.length;
       const cy = pPts.reduce((s, q) => s + q.sy, 0) / pPts.length;
+
+      // Calcul de la normale du polygone en repère monde puis rotation caméra
+      const norm = getPolygonNormal(poly.pts);
+      const nx1 = norm.x * cosY + norm.z * sinY;
+      const nz1 = -norm.x * sinY + norm.z * cosY;
+      const nz2 = norm.y * sinP + nz1 * cosP;
+
+      // nz2 correspond à cos(angle) entre la normale de la face et l'axe de vue de la caméra.
+      // Si Math.abs(nz2) < 0.35 ou nz2 <= 0 (vue de profil rasant ou face arrière),
+      // masquer automatiquement les étiquettes pour éviter tout chevauchement en vue éclatée / tranche.
+      const showLabel = nz2 >= 0.35;
+
       return {
         poly,
         pPts,
@@ -465,6 +550,7 @@ export const BardagePlan3D: React.FC<{
         avgDepth: avgDepth + poly.layerOrder * 0.002,
         cx,
         cy,
+        showLabel,
       };
     });
 
@@ -665,7 +751,7 @@ export const BardagePlan3D: React.FC<{
           role="img"
           aria-label="Maquette 3D interactive du bardage"
         >
-          {projected.items.map(({ poly, pointsAttr, cx, cy }) => {
+          {projected.items.map(({ poly, pointsAttr, cx, cy, showLabel }) => {
             const isSel =
               selectedPiece &&
               poly.piece &&
@@ -692,7 +778,7 @@ export const BardagePlan3D: React.FC<{
                   strokeLinejoin="round"
                   opacity={poly.opacity ?? 1}
                 />
-                {poly.label && (
+                {showLabel && poly.label && (
                   <text
                     x={cx}
                     y={cy - (poly.subLabel ? 0.05 : 0)}
@@ -706,7 +792,7 @@ export const BardagePlan3D: React.FC<{
                     {poly.label}
                   </text>
                 )}
-                {poly.subLabel && (
+                {showLabel && poly.subLabel && (
                   <text
                     x={cx}
                     y={cy + 0.06}

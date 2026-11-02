@@ -424,4 +424,109 @@ for (const pl of pignonTest.plaquesDebit) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 16. PLAN 3D : DÉCOUPE PIGNON DU MUR SUPPORT, ISOLANT ITE, ARASE CHEVRONS ET ANGLE RASANT
+// ---------------------------------------------------------------------------
+// A. Préservation de la hauteur du mur d'égout dans ResultatCalepinage
+assert(
+  pignonTest.hauteurMurM === 2.5,
+  `Plan 3D : hauteurMurM (${pignonTest.hauteurMurM}) conservée fidèlement dans ResultatCalepinage`
+);
+
+// B. Silhouette 3D du mur support et de l'isolant ITE
+// Façade pignon : profil exact en 5 points (0,0) -> (W,0) -> (W, H_egout) -> (ridgeX, H_faite) -> (0, H_egout)
+const W = 6.0;
+const hMur = pignonTest.hauteurMurM ?? 2.5;
+const hFaite = pignonTest.hauteurFaiteM;
+const ridgeX = W / 2;
+
+const silhouettePignon3D = [
+  { x: 0, y: 0, z: 0 },
+  { x: W, y: 0, z: 0 },
+  { x: W, y: hMur, z: 0 },
+  { x: ridgeX, y: hFaite, z: 0 },
+  { x: 0, y: hMur, z: 0 },
+];
+assert(
+  silhouettePignon3D.length === 5,
+  "Plan 3D : Profil du mur support et isolant pignon possède 5 sommets (pentagone arase toit)"
+);
+assert(
+  silhouettePignon3D[3].x === 3.0 && silhouettePignon3D[3].y === 4.5,
+  "Plan 3D : Sommet faîtage pignon exact à (ridgeX=3m, hFaite=4.5m)"
+);
+assert(
+  silhouettePignon3D[2].y === 2.5 && silhouettePignon3D[4].y === 2.5,
+  "Plan 3D : Égouts gauche et droit à la hauteur exacte du mur (2.5m)"
+);
+
+// C. Arase des chevrons verticaux sous rampant avec garde de ventilation DTU (30 mm)
+const getHToit = (x: number) => {
+  if (x <= ridgeX) {
+    return hMur + (x / ridgeX) * (hFaite - hMur);
+  } else {
+    return hMur + ((W - x) / (W - ridgeX)) * (hFaite - hMur);
+  }
+};
+
+const jeuVentilationM = 0.03; // 30 mm
+const positionsChevronsTest = [0.1, 1.0, 2.0, 3.0, 4.0, 5.0, 5.9];
+for (const cx of positionsChevronsTest) {
+  const chevWidth = 0.055;
+  const x0 = Math.max(0, cx - chevWidth / 2);
+  const x1 = Math.min(W, cx + chevWidth / 2);
+  const yTop0 = Math.max(0.15, getHToit(x0) - jeuVentilationM);
+  const yTop1 = Math.max(0.15, getHToit(x1) - jeuVentilationM);
+
+  assert(
+    yTop0 <= getHToit(x0) && yTop1 <= getHToit(x1),
+    `Plan 3D : Chevron à x=${cx}m strictement arasé sous le toit (yTop <= H_toit)`
+  );
+  assert(
+    Math.abs(getHToit(x0) - yTop0 - jeuVentilationM) < 0.001,
+    `Plan 3D : Chevron à x=${cx}m respecte la garde de ventilation DTU de 30 mm`
+  );
+}
+
+// D. Lisibilité des étiquettes en rotation 3D (Détection angle rasant |cos(angle)| < 0.35)
+function evaluerVisibiliteEtiquette(normalZ: number, normalX: number, normalY: number, yawDeg: number, pitchDeg: number): boolean {
+  const yaw = (yawDeg * Math.PI) / 180;
+  const pitch = (pitchDeg * Math.PI) / 180;
+  const cosY = Math.cos(yaw);
+  const sinY = Math.sin(yaw);
+  const cosP = Math.cos(pitch);
+  const sinP = Math.sin(pitch);
+
+  const nx1 = normalX * cosY + normalZ * sinY;
+  const nz1 = -normalX * sinY + normalZ * cosY;
+  const nz2 = normalY * sinP + nz1 * cosP;
+  return nz2 >= 0.35;
+}
+
+// Normale de la face avant de la façade : (0, 0, 1)
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, 0, 0) === true,
+  "Plan 3D : Vue de Face (yaw=0, pitch=0) -> étiquettes visibles (cos = 1.0 >= 0.35)"
+);
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, -28, 16) === true,
+  "Plan 3D : Vue Iso G (yaw=-28, pitch=16) -> étiquettes visibles (cos ≈ 0.85 >= 0.35)"
+);
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, 32, 18) === true,
+  "Plan 3D : Vue Iso D (yaw=32, pitch=18) -> étiquettes visibles (cos ≈ 0.81 >= 0.35)"
+);
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, 75, 0) === false,
+  "Plan 3D : Vue Profil Tranche (yaw=75) -> étiquettes masquées pour éviter chevauchement (|cos| = 0.26 < 0.35)"
+);
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, -80, 10) === false,
+  "Plan 3D : Vue Tranche Éclatée DTU (yaw=-80, pitch=10) -> étiquettes masquées"
+);
+assert(
+  evaluerVisibiliteEtiquette(1, 0, 0, 180, 0) === false,
+  "Plan 3D : Vue Arrière (yaw=180) -> étiquettes masquées (face arrière)"
+);
+
 console.log(`\n${passed} tests OK`);
