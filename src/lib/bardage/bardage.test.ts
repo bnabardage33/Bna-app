@@ -1,4 +1,4 @@
-import { calculerCalepinage } from "./calepinageCalcul.ts";
+import { calculerCalepinage, getHauteurToit } from "./calepinageCalcul.ts";
 import { decoupageModulesCentres, calculerBesoinsBardage, calculerPose } from "./poseCalcul.ts";
 import { genererPercagesPourModules } from "./percages.ts";
 import { genererModules } from "./modules.ts";
@@ -528,5 +528,128 @@ assert(
   evaluerVisibiliteEtiquette(1, 0, 0, 180, 0) === false,
   "Plan 3D : Vue Arrière (yaw=180) -> étiquettes masquées (face arrière)"
 );
+
+// ---------------------------------------------------------------------------
+// 17. SYNCHRONISATION DU TOIT ET LAYER PRIORITY CONTRE BUG Z-SORTING
+// ---------------------------------------------------------------------------
+
+// A. Unification exacte de getHauteurToit
+assert(
+  typeof getHauteurToit === "function",
+  "getHauteurToit est exportée et accessible pour la 3D et la 2D"
+);
+const hEaves = 3.2;
+const hPeak = 4.5;
+const wallW = 8.4;
+assert(
+  getHauteurToit(0, wallW, hEaves, hPeak) === hEaves,
+  "getHauteurToit(0) = hauteur égout (3.2m)"
+);
+assert(
+  getHauteurToit(wallW, wallW, hEaves, hPeak) === hEaves,
+  "getHauteurToit(wallW) = hauteur égout (3.2m)"
+);
+assert(
+  getHauteurToit(wallW / 2, wallW, hEaves, hPeak) === hPeak,
+  "getHauteurToit(ridgeX) = hauteur faîtage (4.5m)"
+);
+
+// B. Simulation du comparateur Layer Priority
+interface TestPolyItem {
+  id: string;
+  facadeId: string;
+  layerId: number; // 1: Mur, 2: ITE, 3: Chevrons, 4: Panneaux, 5: Ouvertures
+  isSideChant?: boolean;
+  avgDepth: number;
+}
+
+function comparerPolygones(
+  a: TestPolyItem,
+  b: TestPolyItem,
+  facadeDepthMap: Map<string, number>,
+  facadeFacingMap: Map<string, boolean>
+): number {
+  if (a.facadeId !== b.facadeId) {
+    const depthA = facadeDepthMap.get(a.facadeId) ?? a.avgDepth;
+    const depthB = facadeDepthMap.get(b.facadeId) ?? b.avgDepth;
+    if (Math.abs(depthA - depthB) > 0.1) {
+      return depthA - depthB;
+    }
+  }
+
+  const isFront = facadeFacingMap.get(a.facadeId) ?? true;
+  const rankA = isFront ? a.layerId : 10 - a.layerId;
+  const rankB = isFront ? b.layerId : 10 - b.layerId;
+
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
+
+  if (Boolean(a.isSideChant) !== Boolean(b.isSideChant)) {
+    return (a.isSideChant ? 0 : 1) - (b.isSideChant ? 0 : 1);
+  }
+
+  return a.avgDepth - b.avgDepth;
+}
+
+// C. Test à angle oblique critique (-33° / 37°)
+// Le grand polygone ITE a un avgDepth au centre (ex: 2.1 m) plus proche que le panneau d'extrémité (ex: 0.8 m)
+const polyMur: TestPolyItem = { id: "mur", facadeId: "f1", layerId: 1, avgDepth: 2.0 };
+const polyITE: TestPolyItem = { id: "ite", facadeId: "f1", layerId: 2, avgDepth: 2.5 };
+const polyChev: TestPolyItem = { id: "chev", facadeId: "f1", layerId: 3, avgDepth: 2.8 };
+const polyPanneauExtremite: TestPolyItem = { id: "M-41", facadeId: "f1", layerId: 4, avgDepth: 0.5 }; // profondeur plus faible à cause de l'oblique
+
+const testList = [polyPanneauExtremite, polyChev, polyITE, polyMur];
+const depthMap = new Map([["f1", 2.0]]);
+const facingMap = new Map([["f1", true]]);
+
+testList.sort((a, b) => comparerPolygones(a, b, depthMap, facingMap));
+
+assert(
+  testList[0].id === "mur" &&
+    testList[1].id === "ite" &&
+    testList[2].id === "chev" &&
+    testList[3].id === "M-41",
+  "Layer Priority : Mur -> Isolant ITE -> Chevrons -> Panneau M-41 respecté malgré l'angle oblique"
+);
+
+// D. Test en vue arrière (facadeFacing = false)
+const facingBackMap = new Map([["f1", false]]);
+testList.sort((a, b) => comparerPolygones(a, b, depthMap, facingBackMap));
+assert(
+  testList[0].id === "M-41" &&
+    testList[1].id === "chev" &&
+    testList[2].id === "ite" &&
+    testList[3].id === "mur",
+  "Layer Priority vue arrière : Panneau -> Chevrons -> ITE -> Mur strictement inversé"
+);
+
+// E. Cohérence stricte de classification sur 8.4m x 3.2m / 4.5m
+const pignonCal = calculerCalepinage({
+  zoneLargeurM: 8.4,
+  zoneHauteurM: 3.2,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 600,
+  estPignon: true,
+  hauteurFaiteM: 4.5,
+});
+
+for (const p of pignonCal.pieces) {
+  const z1 = getHauteurToit(p.xM, 8.4, 3.2, 4.5);
+  const z2 = getHauteurToit(p.xM + p.largeurM, 8.4, 3.2, 4.5);
+  const yTop = p.yM + p.hauteurM;
+
+  if (p.type === "pleine") {
+    assert(
+      Math.min(z1, z2) >= yTop - 0.001,
+      `Classification stricte : pièce pleine ${p.repere} est 100% sous le rampant (minZ >= yTop)`
+    );
+  } else if (p.type === "pignon") {
+    assert(
+      p.pignonDetails !== undefined,
+      `Classification stricte : pièce pignon ${p.repere} possède pignonDetails`
+    );
+  }
+}
 
 console.log(`\n${passed} tests OK`);

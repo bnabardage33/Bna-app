@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Box, Eye, Layers, RotateCcw } from "lucide-react";
 import type { PieceCalepinage, ResultatCalepinage } from "@/lib/bardage/calepinageCalcul";
+import { getHauteurToit } from "@/lib/bardage/calepinageCalcul";
 import type { FamillePose, ResultatPose } from "@/lib/bardage/poseCalcul";
 import type { OuvertureCalculee } from "./BardageCalepinagePanel";
 
@@ -29,6 +30,10 @@ interface Point3D {
 
 interface Poly3D {
   id: string;
+  facadeId: string;
+  facadeNom?: string;
+  layerId: number; // 1: Mur support, 2: Isolant ITE, 3: Chevrons, 4: Panneaux, 5: Ouvertures
+  isSideChant?: boolean;
   pts: Point3D[];
   fill: string;
   stroke: string;
@@ -37,7 +42,6 @@ interface Poly3D {
   label?: string;
   subLabel?: string;
   piece?: PieceCalepinage;
-  facadeNom?: string;
   layerOrder: number;
 }
 
@@ -66,16 +70,12 @@ function buildFacadePolys(
 ): Poly3D[] {
   const polys: Poly3D[] = [];
   const W = facade.L;
-  const estPignon = Boolean(
-    facade.estPignon ??
-      facade.cal?.estPignon ??
-      (facade.cal?.hauteurFaiteM && facade.hMurM && facade.cal.hauteurFaiteM > facade.hMurM + 0.01)
-  );
+  const estPignon = Boolean(facade.cal?.estPignon ?? facade.estPignon);
 
-  const hFaite = facade.hFaiteM ?? facade.cal?.hauteurFaiteM ?? facade.Hm;
+  const hFaite = facade.cal?.hauteurFaiteM ?? facade.hFaiteM ?? facade.Hm;
   const hMur =
-    facade.hMurM ??
     facade.cal?.hauteurMurM ??
+    facade.hMurM ??
     (estPignon && facade.cal?.pentePct
       ? hFaite - (facade.cal.pentePct / 100) * (W / 2)
       : facade.Hm);
@@ -84,13 +84,9 @@ function buildFacadePolys(
   const hEgoutG = hMur;
   const hEgoutD = hMur;
 
-  const getHauteurToit = (x: number) => {
+  const getHauteurToitRoof = (x: number) => {
     if (!estPignon) return H;
-    if (x <= ridgeX) {
-      return hEgoutG + (x / (ridgeX || 1)) * (hFaite - hEgoutG);
-    } else {
-      return hEgoutD + ((W - x) / (W - ridgeX || 1)) * (hFaite - hEgoutD);
-    }
+    return getHauteurToit(x, W, hMur, hFaite);
   };
 
   const gap = opts.eclateFactor * 0.42; // Décalage entre couches en mode vue éclatée DTU
@@ -130,12 +126,16 @@ function buildFacadePolys(
     z0: number,
     z1: number,
     colors: { front: string; side: string; top: string; stroke: string },
-    layerOrder: number,
+    layerId: number, // 1: Mur support, 2: Isolant ITE, 3: Chevrons, 4: Panneaux, 5: Ouvertures
     meta?: { label?: string; subLabel?: string; piece?: PieceCalepinage; opacity?: number }
   ) => {
     // Face avant
     polys.push({
       id: `${baseId}-front`,
+      facadeId: facade.id,
+      facadeNom: facade.nom,
+      layerId,
+      isSideChant: false,
       pts: pts2d.map((p) => opts.transform({ x: p.x, y: p.y, z: z1 })),
       fill: colors.front,
       stroke: colors.stroke,
@@ -144,8 +144,7 @@ function buildFacadePolys(
       label: meta?.label,
       subLabel: meta?.subLabel,
       piece: meta?.piece,
-      facadeNom: facade.nom,
-      layerOrder,
+      layerOrder: layerId * 10,
     });
 
     // Chants latéraux / supérieurs pour donner le volume 3D
@@ -155,6 +154,10 @@ function buildFacadePolys(
       const isTopEdge = a.y > 0.05 && b.y > 0.05 && Math.abs(a.x - b.x) > 0.01;
       polys.push({
         id: `${baseId}-side-${i}`,
+        facadeId: facade.id,
+        facadeNom: facade.nom,
+        layerId,
+        isSideChant: true,
         pts: [
           opts.transform({ x: a.x, y: a.y, z: z0 }),
           opts.transform({ x: b.x, y: b.y, z: z0 }),
@@ -165,7 +168,7 @@ function buildFacadePolys(
         stroke: colors.stroke,
         strokeWidth: 0.6,
         opacity: meta?.opacity,
-        layerOrder: layerOrder - 0.1,
+        layerOrder: layerId * 10 - 0.1,
       });
     }
   };
@@ -179,7 +182,7 @@ function buildFacadePolys(
       zMurBack,
       zMurFront,
       { front: "#CBD5E1", side: "#94A3B8", top: "#E2E8F0", stroke: "#64748B" },
-      10
+      1
     );
   }
 
@@ -192,7 +195,7 @@ function buildFacadePolys(
       zIsoBack,
       zIsoFront,
       { front: "#FDE68A", side: "#D97706", top: "#FEF3C7", stroke: "#B45309" },
-      20,
+      2,
       { opacity: 0.92 }
     );
   }
@@ -207,8 +210,8 @@ function buildFacadePolys(
 
       let chev2d: { x: number; y: number }[];
       if (estPignon) {
-        const yTop0 = Math.max(0.15, getHauteurToit(x0) - jeuVentilationM);
-        const yTop1 = Math.max(0.15, getHauteurToit(x1) - jeuVentilationM);
+        const yTop0 = Math.max(0.15, getHauteurToitRoof(x0) - jeuVentilationM);
+        const yTop1 = Math.max(0.15, getHauteurToitRoof(x1) - jeuVentilationM);
 
         if (x0 < ridgeX && x1 > ridgeX) {
           const yPeak = Math.max(0.15, hFaite - jeuVentilationM);
@@ -242,7 +245,7 @@ function buildFacadePolys(
         zChevBack,
         zChevFront,
         { front: "#60A5FA", side: "#1D4ED8", top: "#93C5FD", stroke: "#1E40AF" },
-        30
+        3
       );
     });
   }
@@ -270,7 +273,7 @@ function buildFacadePolys(
         zPanBack,
         zPanFront,
         { ...col, stroke: "#334155" },
-        40,
+        4,
         {
           label: p.largeurM > 0.3 && p.hauteurM > 0.25 ? p.repere : undefined,
           subLabel:
@@ -305,7 +308,7 @@ function buildFacadePolys(
           top: "#38BDF8",
           stroke: "#0369A1",
         },
-        50,
+        5,
         {
           label: o.nom,
           subLabel: `${Math.round(o.largeurM * 1000)}×${Math.round(o.hauteurM * 1000)}`,
@@ -554,7 +557,62 @@ export const BardagePlan3D: React.FC<{
       };
     });
 
-    items.sort((a, b) => a.avgDepth - b.avgDepth);
+    // 1. Calcul de la profondeur moyenne et de l'orientation de chaque façade
+    const facadeDepthMap = new Map<string, number>();
+    const facadeFacingMap = new Map<string, boolean>();
+    const facadePointsMap = new Map<string, { sumDepth: number; count: number }>();
+
+    for (const it of items) {
+      const fId = it.poly.facadeId;
+      const cur = facadePointsMap.get(fId) || { sumDepth: 0, count: 0 };
+      cur.sumDepth += it.avgDepth;
+      cur.count += 1;
+      facadePointsMap.set(fId, cur);
+
+      if (!it.poly.isSideChant && !facadeFacingMap.has(fId)) {
+        const norm = getPolygonNormal(it.poly.pts);
+        const nx1 = norm.x * cosY + norm.z * sinY;
+        const nz1 = -norm.x * sinY + norm.z * cosY;
+        const nz2 = norm.y * sinP + nz1 * cosP;
+        facadeFacingMap.set(fId, nz2 >= 0);
+      }
+    }
+
+    for (const [fId, cur] of facadePointsMap.entries()) {
+      facadeDepthMap.set(fId, cur.sumDepth / cur.count);
+    }
+
+    // 2. Tri Painter's Algorithm avec Layer Priority absolue par façade
+    items.sort((a, b) => {
+      // Étape A : Si façades distinctes (Mode Bâtiment 3D), la façade arrière est dessinée en premier
+      if (a.poly.facadeId !== b.poly.facadeId) {
+        const depthA = facadeDepthMap.get(a.poly.facadeId) ?? a.avgDepth;
+        const depthB = facadeDepthMap.get(b.poly.facadeId) ?? b.avgDepth;
+        if (Math.abs(depthA - depthB) > 0.1) {
+          return depthA - depthB;
+        }
+      }
+
+      // Étape B : Pour une même façade, hiérarchie stricte des couches (Layer Priority)
+      // Vue de face (front-facing) : 1. Mur support -> 2. Isolant ITE -> 3. Chevrons -> 4. Panneaux -> 5. Ouvertures
+      // Vue arrière (back-facing) : 5. Ouvertures -> 4. Panneaux -> 3. Chevrons -> 2. Isolant -> 1. Mur support
+      const isFront = facadeFacingMap.get(a.poly.facadeId) ?? true;
+      const rankA = isFront ? a.poly.layerId : 10 - a.poly.layerId;
+      const rankB = isFront ? b.poly.layerId : 10 - b.poly.layerId;
+
+      if (rankA !== rankB) {
+        return rankA - rankB; // L'ITE ou un chevron ne dépassera JAMAIS devant un panneau !
+      }
+
+      // Étape C : Au sein de la même couche d'une même façade
+      // Les chants latéraux sont dessinés juste avant la face avant
+      if (Boolean(a.poly.isSideChant) !== Boolean(b.poly.isSideChant)) {
+        return (a.poly.isSideChant ? 0 : 1) - (b.poly.isSideChant ? 0 : 1);
+      }
+
+      // Tri fin par profondeur des pièces d'une même couche
+      return a.avgDepth - b.avgDepth;
+    });
 
     // Calcul de la boîte englobante 2D projetée
     let minX = -3,

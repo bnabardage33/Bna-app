@@ -158,6 +158,17 @@ function PlanSvg({
             {H.toFixed(2)} m ({Math.round(H * 1000)} mm)
           </text>
 
+          {/* Ligne de pente de toiture sous pignon */}
+          {r.estPignon && (
+            <polyline
+              points={`0,${H - (r.hauteurMurM ?? (r.hauteurFaiteM - (r.pentePct / 100) * (W / 2)))} ${W / 2},${H - r.hauteurFaiteM} ${W},${H - (r.hauteurMurM ?? (r.hauteurFaiteM - (r.pentePct / 100) * (W / 2)))}`}
+              fill="none"
+              stroke="#0284c7"
+              strokeWidth={0.018}
+              strokeDasharray="0.06 0.04"
+            />
+          )}
+
           {r.pieces.map((p) => {
             const cx = p.xM + p.largeurM / 2;
             const cy = H - (p.yM + p.hauteurM / 2);

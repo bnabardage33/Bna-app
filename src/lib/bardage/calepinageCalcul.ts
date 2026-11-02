@@ -315,7 +315,7 @@ function decouperParPignon(
 /**
  * Hauteur exacte du toit à l'abscisse x pour un pignon symétrique.
  */
-function getHauteurToit(x: number, wallWidth: number, hMur: number, hFaite: number): number {
+export function getHauteurToit(x: number, wallWidth: number, hMur: number, hFaite: number): number {
   if (wallWidth <= 0 || hFaite <= hMur) return hMur;
   const ridgeX = wallWidth / 2;
   const delta = hFaite - hMur;
