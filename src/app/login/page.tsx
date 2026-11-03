@@ -29,16 +29,21 @@ export default function LoginPage() {
 
     try {
       await signIn(email.trim(), password);
-      router.replace("/");
+      // Rechargement complet vers / pour garantir la transmission des cookies de session au middleware Next.js
+      window.location.href = "/";
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message === "Invalid login credentials"
-            ? "Identifiants invalides (email ou mot de passe incorrect)"
-            : err.message
-          : "Identifiants invalides ou service d'authentification inaccessible";
+      console.error("Erreur de connexion :", err);
+      let msg = "Identifiants invalides ou service d'authentification inaccessible";
+      if (err instanceof Error) {
+        if (err.message.includes("Invalid login credentials")) {
+          msg = "Identifiants invalides : l'email ou le mot de passe est incorrect.";
+        } else if (err.message.includes("Email not confirmed")) {
+          msg = "Email non confirmé : Allez dans Supabase (Authentication > Users), cliquez sur '...' en face de votre utilisateur et choisissez 'Confirm user'.";
+        } else {
+          msg = `Erreur Supabase : ${err.message}`;
+        }
+      }
       setErrorMsg(msg);
-    } finally {
       setLoading(false);
     }
   };
