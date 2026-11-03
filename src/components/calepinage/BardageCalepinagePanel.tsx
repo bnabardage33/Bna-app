@@ -18,6 +18,7 @@ import {
   Printer,
   RotateCw,
   Ruler,
+  Sliders,
   Trash2,
   Truck,
   Wrench,
@@ -51,6 +52,12 @@ const num = (v: string, def = 0) => {
 };
 
 const COULEUR: Record<PieceCalepinage["type"], string> = {
+  pleine: "#334155",
+  coupe: "#9A3412",
+  pignon: "#854D0E",
+};
+
+const COULEUR_PRINT: Record<PieceCalepinage["type"], string> = {
   pleine: "#E7D9C9",
   coupe: "#F3C9B5",
   pignon: "#F5E0A8",
@@ -92,6 +99,7 @@ function PlanSvg({
   percages = [],
   showPercages = false,
   zoom,
+  lightMode = false,
 }: {
   r: ResultatCalepinage;
   chevrons: number[];
@@ -100,6 +108,7 @@ function PlanSvg({
   percages?: PercageSvgPoint[];
   showPercages?: boolean;
   zoom?: number;
+  lightMode?: boolean;
 }) {
   const [sel, setSel] = useState<string | null>(null);
   const H = r.hauteurFaiteM || r.rangeesHauteursM.reduce((a, b) => a + b, 0);
@@ -119,13 +128,18 @@ function PlanSvg({
       .map((q) => `${q.xM},${H - q.yM}`)
       .join(" ");
   const selected = r.pieces.find((p) => p.id === sel);
+  const palette = lightMode ? COULEUR_PRINT : COULEUR;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className={zoom ? "overflow-auto" : "overflow-x-auto"}>
         <svg
           viewBox={`${-padLeft} ${-padTop} ${W + padLeft + padRight} ${H + padTop + padBottom}`}
-          className="rounded-xl bg-white border border-bna-border block"
+          className={`rounded-xl border block ${
+            lightMode
+              ? "bg-white border-neutral-300"
+              : "bg-slate-950 border-slate-800"
+          }`}
           style={
             zoom
               ? { width: `${Math.round(zoom * 100)}%`, minWidth: `${Math.round(zoom * 640)}px`, maxWidth: "none" }
@@ -135,23 +149,72 @@ function PlanSvg({
           aria-label={`Plan de calepinage, ${r.nbPiecesPosees} pièces`}
         >
           {/* Cotation largeur totale en bas */}
-          <line x1={0} y1={H + 0.18} x2={W} y2={H + 0.18} stroke="#64748b" strokeWidth={0.01} />
-          <line x1={0} y1={H + 0.1} x2={0} y2={H + 0.25} stroke="#64748b" strokeWidth={0.01} />
-          <line x1={W} y1={H + 0.1} x2={W} y2={H + 0.25} stroke="#64748b" strokeWidth={0.01} />
-          <text x={W / 2} y={H + 0.32} fontSize={0.13} textAnchor="middle" fill="#334155" fontWeight="bold">
+          <line
+            x1={0}
+            y1={H + 0.18}
+            x2={W}
+            y2={H + 0.18}
+            stroke={lightMode ? "#64748b" : "#F97316"}
+            strokeWidth={0.012}
+          />
+          <line
+            x1={0}
+            y1={H + 0.1}
+            x2={0}
+            y2={H + 0.25}
+            stroke={lightMode ? "#64748b" : "#F97316"}
+            strokeWidth={0.012}
+          />
+          <line
+            x1={W}
+            y1={H + 0.1}
+            x2={W}
+            y2={H + 0.25}
+            stroke={lightMode ? "#64748b" : "#F97316"}
+            strokeWidth={0.012}
+          />
+          <text
+            x={W / 2}
+            y={H + 0.32}
+            fontSize={0.13}
+            textAnchor="middle"
+            fill={lightMode ? "#334155" : "#F8FAFC"}
+            fontWeight="bold"
+          >
             {W.toFixed(2)} m ({Math.round(W * 1000)} mm)
           </text>
 
           {/* Cotation hauteur totale à gauche */}
-          <line x1={-0.18} y1={0} x2={-0.18} y2={H} stroke="#64748b" strokeWidth={0.01} />
-          <line x1={-0.25} y1={0} x2={-0.1} y2={0} stroke="#64748b" strokeWidth={0.01} />
-          <line x1={-0.25} y1={H} x2={-0.1} y2={H} stroke="#64748b" strokeWidth={0.01} />
+          <line
+            x1={-0.18}
+            y1={0}
+            x2={-0.18}
+            y2={H}
+            stroke={lightMode ? "#64748b" : "#38BDF8"}
+            strokeWidth={0.012}
+          />
+          <line
+            x1={-0.25}
+            y1={0}
+            x2={-0.1}
+            y2={0}
+            stroke={lightMode ? "#64748b" : "#38BDF8"}
+            strokeWidth={0.012}
+          />
+          <line
+            x1={-0.25}
+            y1={H}
+            x2={-0.1}
+            y2={H}
+            stroke={lightMode ? "#64748b" : "#38BDF8"}
+            strokeWidth={0.012}
+          />
           <text
             x={-0.28}
             y={H / 2}
             fontSize={0.13}
             textAnchor="middle"
-            fill="#334155"
+            fill={lightMode ? "#334155" : "#F8FAFC"}
             fontWeight="bold"
             transform={`rotate(-90, -0.28, ${H / 2})`}
           >
@@ -167,9 +230,9 @@ function PlanSvg({
               <g key={p.id} onClick={() => setSel(isSel ? null : p.id)} className="cursor-pointer">
                 <polygon
                   points={toPts(p)}
-                  fill={isSel ? "#C15C3D" : COULEUR[p.type]}
-                  stroke={isSel ? "#1e293b" : "#4B4B4B"}
-                  strokeWidth={isSel ? 0.016 : 0.008}
+                  fill={isSel ? "#F97316" : palette[p.type]}
+                  stroke={isSel ? "#FFFFFF" : lightMode ? "#4B4B4B" : "#94A3B8"}
+                  strokeWidth={isSel ? 0.018 : 0.009}
                 />
                 {p.largeurM > 0.18 && p.hauteurM > 0.14 && (
                   <>
@@ -180,7 +243,7 @@ function PlanSvg({
                       fontWeight="bold"
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fill={isSel ? "#FFFFFF" : "#1E293B"}
+                      fill={isSel ? "#FFFFFF" : lightMode ? "#1E293B" : "#F8FAFC"}
                     >
                       {p.repere}
                     </text>
@@ -191,7 +254,7 @@ function PlanSvg({
                         fontSize={fSize * 0.72}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fill={isSel ? "#FDE68A" : "#475569"}
+                        fill={isSel ? "#FDE68A" : lightMode ? "#475569" : "#CBD5E1"}
                       >
                         {p.pignonDetails
                           ? `${p.pignonDetails.cutWidthMm}×${p.pignonDetails.hLeftMm}/${p.pignonDetails.hRightMm}`
@@ -215,17 +278,17 @@ function PlanSvg({
                   y={oy}
                   width={o.largeurM}
                   height={o.hauteurM}
-                  fill="rgba(224, 242, 254, 0.88)"
-                  stroke="#0284c7"
-                  strokeWidth={0.018}
+                  fill={lightMode ? "rgba(224, 242, 254, 0.88)" : "rgba(15, 23, 42, 0.92)"}
+                  stroke="#38BDF8"
+                  strokeWidth={0.02}
                 />
                 <line
                   x1={ox}
                   y1={oy}
                   x2={ox + o.largeurM}
                   y2={oy + o.hauteurM}
-                  stroke="#0284c7"
-                  strokeWidth={0.008}
+                  stroke="#38BDF8"
+                  strokeWidth={0.009}
                   strokeDasharray="0.04 0.03"
                 />
                 <line
@@ -233,8 +296,8 @@ function PlanSvg({
                   y1={oy}
                   x2={ox}
                   y2={oy + o.hauteurM}
-                  stroke="#0284c7"
-                  strokeWidth={0.008}
+                  stroke="#38BDF8"
+                  strokeWidth={0.009}
                   strokeDasharray="0.04 0.03"
                 />
                 <text
@@ -244,7 +307,7 @@ function PlanSvg({
                   fontWeight="bold"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#0369a1"
+                  fill={lightMode ? "#0369a1" : "#38BDF8"}
                 >
                   {o.nom}
                 </text>
@@ -254,7 +317,7 @@ function PlanSvg({
                   fontSize={Math.min(0.085, o.largeurM / 6)}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#075985"
+                  fill={lightMode ? "#075985" : "#BAE6FD"}
                 >
                   {Math.round(o.largeurM * 1000)}×{Math.round(o.hauteurM * 1000)} mm
                 </text>
@@ -280,10 +343,10 @@ function PlanSvg({
                 x2={x}
                 y1={yTopSvg}
                 y2={H}
-                stroke="#2563eb"
-                strokeWidth={0.006}
+                stroke="#38BDF8"
+                strokeWidth={0.007}
                 strokeDasharray="0.05 0.04"
-                opacity={0.55}
+                opacity={0.65}
               />
             );
           })}
@@ -294,7 +357,7 @@ function PlanSvg({
               <polyline
                 points={`0,${H - getHauteurToit(0, W, r.hauteurMurM ?? H, r.hauteurFaiteM)} ${W / 2},${H - getHauteurToit(W / 2, W, r.hauteurMurM ?? H, r.hauteurFaiteM)} ${W},${H - getHauteurToit(W, W, r.hauteurMurM ?? H, r.hauteurFaiteM)}`}
                 fill="none"
-                stroke="#0284c7"
+                stroke="#38BDF8"
                 strokeWidth={0.02}
                 strokeDasharray="0.06 0.04"
               />
@@ -304,10 +367,10 @@ function PlanSvg({
                 y1={H - (r.hauteurMurM ?? H)}
                 x2={W + 0.12}
                 y2={H - (r.hauteurMurM ?? H)}
-                stroke="#0284c7"
+                stroke="#38BDF8"
                 strokeWidth={0.008}
                 strokeDasharray="0.04 0.03"
-                opacity={0.65}
+                opacity={0.75}
               />
               <text
                 x={-0.15}
@@ -315,7 +378,7 @@ function PlanSvg({
                 fontSize={0.09}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fill="#0284c7"
+                fill="#38BDF8"
                 fontWeight="bold"
               >
                 Égout {(r.hauteurMurM ?? H).toFixed(2)} m
@@ -331,33 +394,51 @@ function PlanSvg({
                 cx={pt.xM}
                 cy={pt.ySvgM}
                 r={0.018}
-                fill={pt.type === "fixe" ? "#dc2626" : "#d97706"}
+                fill={pt.type === "fixe" ? "#EF4444" : "#F59E0B"}
                 stroke="#ffffff"
                 strokeWidth={0.005}
               />
             ))}
         </svg>
       </div>
-      <div className="flex flex-wrap gap-2 text-[10px] text-bna-muted">
-        <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.pleine }} />Pleine</span>
-        <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.coupe }} />Rive / coupe</span>
-        <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1" style={{ background: COULEUR.pignon }} />Pignon</span>
+      <div className="flex flex-wrap gap-3 text-[10px] text-slate-400">
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block w-2.5 h-2.5 rounded-xs border border-slate-500" style={{ background: palette.pleine }} />
+          Pleine
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block w-2.5 h-2.5 rounded-xs border border-orange-500/60" style={{ background: palette.coupe }} />
+          Rive / coupe
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block w-2.5 h-2.5 rounded-xs border border-amber-500/60" style={{ background: palette.pignon }} />
+          Pignon
+        </span>
         {ouvertures.length > 0 && (
-          <span><i className="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-1 border border-sky-600 bg-sky-100" />Ouvertures ({ouvertures.length})</span>
+          <span className="flex items-center gap-1.5">
+            <i className="inline-block w-2.5 h-2.5 rounded-xs border border-sky-400 bg-sky-950" />
+            Ouvertures ({ouvertures.length})
+          </span>
         )}
-        <span><i className="inline-block w-4 border-t border-dashed border-blue-600 align-middle mr-1" />Chevrons (derrière)</span>
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block w-4 border-t border-dashed border-sky-400" />
+          Chevrons d&apos;ossature
+        </span>
         {showPercages && (
-          <span><i className="inline-block w-2 h-2 rounded-full bg-red-600 align-middle mr-1" />Perçages DTU ({percages.length})</span>
+          <span className="flex items-center gap-1.5">
+            <i className="inline-block w-2 h-2 rounded-full bg-red-500" />
+            Perçages DTU ({percages.length})
+          </span>
         )}
       </div>
       {selected && (
-        <p className="text-[11px] bg-bna-offwhite border border-bna-border rounded-lg p-2">
-          <b>{selected.repere}</b> ({selected.type === "pignon" ? "Pignon biseauté" : selected.type}) ·{" "}
+        <div className="text-[11px] bg-slate-950 border border-orange-500/40 rounded-xl p-2.5 text-slate-200">
+          <b className="text-orange-400">{selected.repere}</b> ({selected.type === "pignon" ? "Pignon biseauté" : selected.type}) ·{" "}
           {selected.pignonDetails
             ? `${selected.pignonDetails.cutWidthMm} × ${selected.pignonDetails.cutHeightMm} mm (gauche : ${selected.pignonDetails.hLeftMm} mm / droite : ${selected.pignonDetails.hRightMm} mm)`
             : `${Math.round(selected.largeurM * 1000)} × ${Math.round(selected.hauteurM * 1000)} mm`}{" "}
-          · {selected.surfaceM2.toFixed(2)} m² · plaque brute n°{selected.plaqueIndex ?? "—"}
-        </p>
+          · <b className="text-white">{selected.surfaceM2.toFixed(2)} m²</b> · plaque brute n°{selected.plaqueIndex ?? "—"}
+        </div>
       )}
     </div>
   );
@@ -367,24 +448,29 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
   return (
     <div className="space-y-3">
       {r.nbBlocsCouples !== undefined && r.nbBlocsCouples > 0 && (
-        <div className="p-2.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center justify-between gap-2">
-          <span className="text-[11px] font-bold text-orange-900">
+        <div className="p-2.5 rounded-xl bg-orange-950/50 border border-orange-500/30 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-bold text-orange-200">
             Couplage tête-bêche actif : {r.nbPiecesCouplees} pièces de pignon combinées ({r.nbBlocsCouples} bloc{r.nbBlocsCouples > 1 ? "s" : ""})
           </span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-bna-copper border border-orange-300">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40">
             Nesting optimisé
           </span>
         </div>
       )}
       {r.plaquesDebit.map((pl) => (
-        <div key={pl.index} className="space-y-1">
-          <p className="text-[11px] font-semibold text-bna-anthracite">
-            Plaque {pl.index} · {pl.longueurMm}×{pl.largeurMm} mm · rendement {pl.tauxRendementPct.toFixed(0)} %
-          </p>
+        <div key={pl.index} className="space-y-1.5 bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold text-slate-200">
+              Plaque brute n°{pl.index} · {pl.longueurMm} × {pl.largeurMm} mm
+            </p>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              Rendement {pl.tauxRendementPct.toFixed(0)} %
+            </span>
+          </div>
           <div className="overflow-x-auto">
             <svg
               viewBox={`0 0 ${pl.longueurMm} ${pl.largeurMm}`}
-              className="rounded-lg border border-bna-border bg-neutral-100 block"
+              className="rounded-lg border border-slate-700 bg-slate-900 block"
               style={
                 zoom
                   ? { width: `${Math.round(zoom * 100)}%`, minWidth: `${Math.round(zoom * 600)}px`, maxWidth: "none" }
@@ -392,8 +478,16 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
               }
             >
               {pl.chutes.map((c) => (
-                <rect key={c.id} x={c.xMm} y={c.yMm} width={c.largeurMm} height={c.hauteurMm}
-                  fill={c.reutilisable ? "#BBF7D0" : "#E5E5E5"} stroke="#9CA3AF" strokeWidth={4} />
+                <rect
+                  key={c.id}
+                  x={c.xMm}
+                  y={c.yMm}
+                  width={c.largeurMm}
+                  height={c.hauteurMm}
+                  fill={c.reutilisable ? "#064E3B" : "#1E293B"}
+                  stroke={c.reutilisable ? "#10B981" : "#475569"}
+                  strokeWidth={4}
+                />
               ))}
               {pl.pieces.map((p) => {
                 const isCouple = !!p.coupleAvec;
@@ -401,44 +495,40 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
 
                 return (
                   <g key={`${p.id}-${p.xMm}-${p.yMm}`}>
-                    {/* Rectangle capable ou bloc couplé */}
                     <rect
                       x={p.xMm}
                       y={p.yMm}
                       width={p.largeurMm}
                       height={p.hauteurMm}
-                      fill="#E7D9C9"
-                      stroke="#4B4B4B"
+                      fill="#334155"
+                      stroke="#94A3B8"
                       strokeWidth={5}
                     />
 
-                    {/* Trait de coupe diagonal en pointillés pour bloc couplé tête-bêche */}
                     {isCouple && p.pignonDetails && (
                       <line
                         x1={p.xMm}
                         y1={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hLeftMm)}
                         x2={p.xMm + p.largeurMm}
                         y2={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hRightMm)}
-                        stroke="#EA580C"
+                        stroke="#F97316"
                         strokeWidth={6}
                         strokeDasharray="18,12"
                       />
                     )}
 
-                    {/* Trait de pente en pointillés pour pignon seul */}
                     {isPignonSeul && p.pignonDetails && (
                       <line
                         x1={p.xMm}
                         y1={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hLeftMm)}
                         x2={p.xMm + p.largeurMm}
                         y2={p.yMm + Math.max(0, p.hauteurMm - p.pignonDetails.hRightMm)}
-                        stroke="#EA580C"
+                        stroke="#F97316"
                         strokeWidth={5}
                         strokeDasharray="14,10"
                       />
                     )}
 
-                    {/* Étiquettes de cotes */}
                     {p.largeurMm > 160 && p.hauteurMm > 90 && (
                       <>
                         {isCouple && p.coupleAvec ? (
@@ -449,12 +539,12 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
                             fontWeight="bold"
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            fill="#2B2B2B"
+                            fill="#F8FAFC"
                           >
                             <tspan x={p.xMm + p.largeurMm / 2} dy="-0.65em">
                               {p.repere.split(" + ")[0]} ({p.pignonDetails?.cutWidthMm}×{p.pignonDetails?.hLeftMm}/{p.pignonDetails?.hRightMm})
                             </tspan>
-                            <tspan x={p.xMm + p.largeurMm / 2} dy="1.3em" fill="#C15C3D">
+                            <tspan x={p.xMm + p.largeurMm / 2} dy="1.3em" fill="#FB923C">
                               + {p.coupleAvec.repere} ({p.coupleAvec.pignonDetails?.cutWidthMm}×{p.coupleAvec.pignonDetails?.hLeftMm}/{p.coupleAvec.pignonDetails?.hRightMm}) [Couplé]
                             </tspan>
                           </text>
@@ -466,7 +556,7 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
                             fontWeight="bold"
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            fill="#2B2B2B"
+                            fill="#F8FAFC"
                           >
                             {p.repere} ({p.pignonDetails.cutWidthMm}×{p.pignonDetails.hLeftMm}/{p.pignonDetails.hRightMm})
                           </text>
@@ -478,7 +568,7 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
                             fontWeight="bold"
                             textAnchor="middle"
                             dominantBaseline="middle"
-                            fill="#2B2B2B"
+                            fill="#F8FAFC"
                           >
                             {p.repere} ({p.largeurMm}×{p.hauteurMm})
                           </text>
@@ -492,14 +582,14 @@ function DebitSvg({ r, zoom }: { r: ResultatCalepinage; zoom?: number }) {
           </div>
         </div>
       ))}
-      <p className="text-[10px] text-bna-muted">
-        Vert = chute réutilisable · gris = perte · pointillé orange = ligne de coupe / couplage tête-bêche.
+      <p className="text-[10px] text-slate-400">
+        Émeraude = chute réutilisable · Ardoise sombre = perte · Pointillé orange = ligne de coupe / couplage tête-bêche.
       </p>
     </div>
   );
 }
 
-/** Affiche son contenu en plein écran avec zoom et mode paysage 90° intégré. */
+/** Affiche son contenu en plein écran avec zoom et mode paysage 90° intégré (Dark UI). */
 function PleinEcran({ titre, children }: { titre: string; children: (zoom?: number) => React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [zoom, setZoom] = useState(1.25);
@@ -508,15 +598,19 @@ function PleinEcran({ titre, children }: { titre: string; children: (zoom?: numb
 
   return (
     <>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-bna-muted">
+          <span className="text-[10px] font-semibold text-slate-400">
             Touche une pièce pour voir ses cotes · glisse pour défiler
           </span>
           <button
             type="button"
-            onClick={() => { setZoom(1.25); setPaysage(false); setOpen(true); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-bna-copper text-white rounded-xl shadow-xs active:scale-95"
+            onClick={() => {
+              setZoom(1.25);
+              setPaysage(false);
+              setOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-xs active:scale-95 transition-colors"
           >
             <Maximize2 className="w-3.5 h-3.5" /> Plein écran
           </button>
@@ -524,35 +618,56 @@ function PleinEcran({ titre, children }: { titre: string; children: (zoom?: numb
         {children()}
       </div>
       {open && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] bg-white flex flex-col">
-          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-bna-border bg-bna-offwhite">
-            <span className="text-xs font-bold text-bna-anthracite truncate">{titre}</span>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[70] bg-slate-950 text-slate-100 flex flex-col">
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-800 bg-slate-900">
+            <span className="text-xs font-bold text-white truncate">{titre}</span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setPaysage((v) => !v)}
                 className={`px-2.5 py-1.5 text-[11px] font-bold border rounded-lg inline-flex items-center gap-1 active:scale-95 ${
                   paysage
-                    ? "bg-amber-100 border-amber-400 text-amber-950"
-                    : "bg-white border-bna-border text-bna-anthracite"
+                    ? "bg-orange-500/20 border-orange-500 text-orange-300"
+                    : "bg-slate-800 border-slate-700 text-slate-200"
                 }`}
                 title="Pivoter le plan à 90° sans déverrouiller la rotation du téléphone"
               >
                 <RotateCw className="w-3.5 h-3.5" /> 90°
               </button>
-              <button type="button" aria-label="Dézoomer" onClick={() => setZoom((z) => bornes(z - 0.25))}
-                className="p-2 bg-white border border-bna-border rounded-lg active:scale-95"><Minus className="w-4 h-4" /></button>
-              <button type="button" onClick={() => setZoom(1)}
-                className="px-2 py-1.5 text-[11px] font-bold bg-white border border-bna-border rounded-lg min-w-[3.2rem]">{Math.round(zoom * 100)} %</button>
-              <button type="button" aria-label="Zoomer" onClick={() => setZoom((z) => bornes(z + 0.25))}
-                className="p-2 bg-white border border-bna-border rounded-lg active:scale-95"><Plus className="w-4 h-4" /></button>
-              <button type="button" aria-label="Fermer le plein écran" onClick={() => setOpen(false)}
-                className="px-2.5 py-2 bg-bna-copper text-white text-xs font-bold rounded-lg inline-flex items-center gap-1 active:scale-95">
+              <button
+                type="button"
+                aria-label="Dézoomer"
+                onClick={() => setZoom((z) => bornes(z - 0.25))}
+                className="p-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg active:scale-95"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(1)}
+                className="px-2 py-1.5 text-[11px] font-bold bg-slate-800 border border-slate-700 text-slate-200 rounded-lg min-w-[3.2rem]"
+              >
+                {Math.round(zoom * 100)} %
+              </button>
+              <button
+                type="button"
+                aria-label="Zoomer"
+                onClick={() => setZoom((z) => bornes(z + 0.25))}
+                className="p-2 bg-slate-800 border border-slate-700 text-slate-200 rounded-lg active:scale-95"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Fermer le plein écran"
+                onClick={() => setOpen(false)}
+                className="px-2.5 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1 active:scale-95"
+              >
                 <Minimize2 className="w-4 h-4" /> Fermer
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-3 bg-neutral-50 flex items-start justify-start">
+          <div className="flex-1 overflow-auto p-3 bg-slate-950 flex items-start justify-start">
             <div
               className="w-full"
               style={
@@ -568,8 +683,8 @@ function PleinEcran({ titre, children }: { titre: string; children: (zoom?: numb
               {children(zoom)}
             </div>
           </div>
-          <p className="px-3 py-1.5 text-[10px] text-bna-muted border-t border-bna-border bg-white">
-            Astuce : utilise le bouton <b>90°</b> pour basculer le plan en paysage sur toute la hauteur de l&apos;écran, et <b>+ / −</b> pour zoomer sur les repères.
+          <p className="px-3 py-1.5 text-[10px] text-slate-400 border-t border-slate-800 bg-slate-900">
+            Astuce : utilise le bouton <b className="text-white">90°</b> pour basculer le plan en paysage sur toute la hauteur de l&apos;écran, et <b className="text-white">+ / −</b> pour zoomer sur les repères.
           </p>
         </div>
       )}
@@ -819,9 +934,15 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
           }
           setActiveVersion(latest.calepinage.version);
           const dbFacades = latest.detail?.facades_json;
-          if (!hasLocal && Array.isArray(dbFacades) && dbFacades.length > 0 && (dbFacades[0] as any)?.id) {
-            setFacades(dbFacades as FacadeFormState[]);
-            setActiveId((dbFacades[0] as any).id);
+          if (
+            !hasLocal &&
+            Array.isArray(dbFacades) &&
+            dbFacades.length > 0 &&
+            typeof (dbFacades[0] as { id?: string })?.id === "string"
+          ) {
+            const typedFacades = dbFacades as FacadeFormState[];
+            setFacades(typedFacades);
+            setActiveId(typedFacades[0].id);
           }
         })
         .catch(() => {
@@ -1123,15 +1244,19 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         `Calepinage Façade V${res.calepinage.version} enregistré : ${cumulGlobal.nbFacadesValides} façade(s) (${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²) · ${res.besoins.length} besoins matériaux générés.`
       );
       if (onSaved) onSaved();
-    } catch (e: any) {
-      setSaveErr(e?.message || "Erreur lors de l'enregistrement des besoins bardage.");
+    } catch (e) {
+      setSaveErr(
+        (e as { message?: string })?.message ||
+          "Erreur lors de l'enregistrement des besoins bardage."
+      );
     } finally {
       setIsSaving(false);
     }
   };
 
-  const field = "w-full px-2.5 py-2 text-xs bg-white border border-bna-border rounded-lg focus:outline-none focus:ring-1 focus:ring-bna-copper";
-  const lbl = "text-[10px] font-bold uppercase tracking-wider text-bna-muted block mb-1";
+  const field =
+    "w-full px-2.5 py-2 text-xs font-bold bg-slate-950 border border-slate-700 text-white rounded-lg focus:outline-hidden focus:border-orange-500";
+  const lbl = "text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1";
 
   const afficherGlobal = porteeMetre === "global" && facades.length > 1;
   const besoinsAffiches = afficherGlobal
@@ -1146,701 +1271,908 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
     : [];
 
   return (
-    <div className="mt-4 space-y-3 animate-in fade-in duration-100">
-      <div className="flex items-center justify-between gap-2 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-        <span>Quantitatif indicatif (DTU 41.2) à vérifier selon le procédé et le support.</span>
-        {activeVersion !== null && (
-          <span className="shrink-0 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-            V{activeVersion} ✓
+    <div className="mt-4 bg-slate-950 text-slate-100 rounded-2xl border border-slate-800 p-4 sm:p-5 space-y-5 shadow-xl animate-in fade-in duration-100">
+      {/* EN-TÊTE SOMBRE PRO BARDAGE */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400">
+            <Layers className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-bold text-sm sm:text-base text-white">
+                Calepinage Bardage &amp; Façade Pro (DTU 41.2)
+              </h4>
+              {activeVersion !== null && (
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  V{activeVersion} ✓
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Multi-façades, pignons rampants, nesting tête-bêche, perçages DTU &amp; maquette 3D
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30">
+            {cumulGlobal.surfaceTotaleM2.toFixed(2)} m² nets ({cumulGlobal.nbFacadesValides} façade{cumulGlobal.nbFacadesValides > 1 ? "s" : ""})
           </span>
-        )}
+          {cumulGlobal.nbPlaquesTotales > 0 && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-900 text-sky-400 border border-slate-800">
+              {cumulGlobal.nbPlaquesTotales} plaques brutes
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* COLONNE GAUCHE (Desktop lg:col-span-5) : BARRE MULTI-FAÇADES & FORMULAIRE */}
-        <div className="lg:col-span-5 space-y-3">
-          {/* BARRE MULTI-FAÇADES : SÉLECTION INDÉPENDANTE + AJOUT + RÉCAP GLOBAL */}
-      <div className="p-2.5 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted block">
-              Façades du chantier ({facades.length})
-            </span>
-            <span className="text-[11px] font-semibold text-bna-anthracite">
-              Cumul net : <b>{cumulGlobal.surfaceTotaleM2.toFixed(2)} m²</b>
-              {cumulGlobal.nbPlaquesTotales > 0 ? ` · ${cumulGlobal.nbPlaquesTotales} plaques` : ""}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleAddFacade}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-bna-copper text-white rounded-lg shadow-xs active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" /> Ajouter une façade
-          </button>
-        </div>
-
-        {/* Onglets des façades */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {facades.map((f, idx) => {
-            const res = resultatsParFacade[idx];
-            const isAct = f.id === activeFacade.id;
-            const surf = res && !("erreur" in res) ? `${res.surfaceM2.toFixed(1)} m²` : "—";
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setActiveId(f.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all flex items-center gap-1.5 ${
-                  isAct
-                    ? "bg-white text-bna-copper border-bna-copper shadow-2xs font-bold"
-                    : "bg-neutral-100 text-bna-anthracite border-bna-border hover:bg-white"
-                }`}
-              >
-                <span>{f.nom || `Façade ${idx + 1}`}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-bna-offwhite text-bna-muted">
-                  {surf}
+        <div className="lg:col-span-5 space-y-4">
+          {/* 1. BARRE MULTI-FAÇADES */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-orange-400" />
+                  1. Façades du chantier ({facades.length})
                 </span>
+                <span className="text-[11px] text-slate-400">
+                  Cumul net : <b className="text-white">{cumulGlobal.surfaceTotaleM2.toFixed(2)} m²</b>
+                  {cumulGlobal.nbPlaquesTotales > 0 ? ` · ${cumulGlobal.nbPlaquesTotales} plaques` : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddFacade}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-xs active:scale-95 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Ajouter façade
               </button>
-            );
-          })}
-        </div>
+            </div>
 
-        {/* Nom de la façade active & suppression */}
-        <div className="flex items-center gap-2 pt-1">
-          <input
-            className={field}
-            placeholder="Nom de la façade (ex: Façade Nord, Pignon Est...)"
-            value={activeFacade.nom}
-            onChange={(e) => updateActive({ nom: e.target.value })}
-          />
-          {facades.length > 1 && (
-            <button
-              type="button"
-              onClick={() => handleDeleteFacade(activeFacade.id)}
-              className="p-2 text-red-600 bg-white hover:bg-red-50 border border-red-200 rounded-lg shrink-0 active:scale-95"
-              title="Supprimer cette façade"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
+            {/* Onglets des façades */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {facades.map((f, idx) => {
+                const res = resultatsParFacade[idx];
+                const isAct = f.id === activeFacade.id;
+                const surf = res && !("erreur" in res) ? `${res.surfaceM2.toFixed(1)} m²` : "—";
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setActiveId(f.id)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border shrink-0 transition-all flex items-center gap-1.5 ${
+                      isAct
+                        ? "bg-orange-500/20 text-orange-300 border-orange-500 font-bold shadow-sm"
+                        : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+                    }`}
+                  >
+                    <span>{f.nom || `Façade ${idx + 1}`}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-900 text-slate-300 border border-slate-800">
+                      {surf}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-      {/* FORMULAIRE DE LA FAÇADE SÉLECTIONNÉE */}
-      <div className="grid grid-cols-2 gap-2.5">
-        <div className="col-span-2">
-          <label className={lbl}>Famille de bardage ({activeFacade.nom})</label>
-          <select
-            className={field}
-            value={activeFacade.famille}
-            onChange={(e) => updateActive({ famille: e.target.value as FamillePose })}
-          >
-            {(Object.keys(LABELS_FAMILLE) as FamillePose[]).map((k) => (
-              <option key={k} value={k}>{LABELS_FAMILLE[k]}</option>
-            ))}
-          </select>
-        </div>
-        <div><label className={lbl}>Largeur façade (m)</label>
-          <input className={field} inputMode="decimal" value={activeFacade.largeur} onChange={(e) => updateActive({ largeur: e.target.value })} /></div>
-        <div><label className={lbl}>Hauteur mur (m)</label>
-          <input className={field} inputMode="decimal" value={activeFacade.hauteur} onChange={(e) => updateActive({ hauteur: e.target.value })} /></div>
-        <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-bna-anthracite">
-          <input type="checkbox" checked={activeFacade.pignon} onChange={(e) => updateActive({ pignon: e.target.checked })} /> Pignon (rampants)
-        </label>
-        {activeFacade.pignon && (
-          <div className="col-span-2"><label className={lbl}>Hauteur au faîtage (m)</label>
-            <input className={field} inputMode="decimal" value={activeFacade.faite} onChange={(e) => updateActive({ faite: e.target.value })} /></div>
-        )}
-        {panneau && (
-          <>
-            <div><label className={lbl}>Module posé — larg. (mm)</label>
-              <input className={field} inputMode="numeric" value={activeFacade.modL} onChange={(e) => updateActive({ modL: e.target.value })} /></div>
-            <div><label className={lbl}>Module posé — haut. (mm)</label>
-              <input className={field} inputMode="numeric" value={activeFacade.modH} onChange={(e) => updateActive({ modH: e.target.value })} /></div>
-            <div><label className={lbl}>Plaque brute — long. (mm)</label>
-              <input className={field} inputMode="numeric" value={activeFacade.plqL} onChange={(e) => updateActive({ plqL: e.target.value })} /></div>
-            <div><label className={lbl}>Plaque brute — larg. (mm)</label>
-              <input className={field} inputMode="numeric" value={activeFacade.plqH} onChange={(e) => updateActive({ plqH: e.target.value })} /></div>
-            <div><label className={lbl}>Sens de pose</label>
-              <select className={field} value={activeFacade.sens} onChange={(e) => updateActive({ sens: e.target.value as "horizontal" | "vertical" })}>
-                <option value="horizontal">Horizontal</option><option value="vertical">Vertical</option>
-              </select></div>
-            <div><label className={lbl}>Rive min. (mm)</label>
-              <input className={field} inputMode="numeric" placeholder="250" value={activeFacade.minRiveWidth ?? "250"} onChange={(e) => updateActive({ minRiveWidth: e.target.value })} title="Largeur minimale d'une pièce de rive en mm (anti-micro-plaques)" /></div>
-            <label className="flex items-end gap-2 text-[11px] font-semibold text-bna-anthracite pb-2">
-              <input type="checkbox" checked={activeFacade.rotation} onChange={(e) => updateActive({ rotation: e.target.checked })} /> Pivot 90° autorisé (décor uni)
-            </label>
-          </>
-        )}
-        <div><label className={lbl}>Isolant ITE (mm, 0 = aucun)</label>
-          <input className={field} inputMode="numeric" value={activeFacade.isolant} onChange={(e) => updateActive({ isolant: e.target.value })} /></div>
-
-        {/* LOT E : OUVERTURES DE LA FAÇADE (FENÊTRES / PORTES / BAIES) */}
-        <div className="col-span-2 p-2.5 bg-neutral-50 border border-bna-border rounded-xl space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted flex items-center gap-1">
-              <DoorOpen className="w-3.5 h-3.5 text-bna-copper" />
-              Ouvertures — {activeFacade.nom} ({(activeFacade.ouvertures ?? []).length})
-            </span>
-            <button
-              type="button"
-              onClick={handleAddOuverture}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold bg-white border border-bna-border text-bna-anthracite rounded-lg hover:border-bna-copper active:scale-95"
-            >
-              <Plus className="w-3 h-3 text-bna-copper" /> Ajouter fenêtre / porte
-            </button>
+            {/* Nom de la façade active & suppression */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                className={field}
+                placeholder="Nom de la façade (ex: Façade Nord, Pignon Est...)"
+                value={activeFacade.nom}
+                onChange={(e) => updateActive({ nom: e.target.value })}
+              />
+              {facades.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFacade(activeFacade.id)}
+                  className="p-2 text-red-400 bg-slate-950 hover:bg-red-950/50 border border-red-500/30 rounded-lg shrink-0 active:scale-95"
+                  title="Supprimer cette façade"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
-          {(activeFacade.ouvertures ?? []).length > 0 && (
-            <div className="space-y-2">
-              {(activeFacade.ouvertures ?? []).map((o) => (
-                <div key={o.id} className="p-2 bg-white border border-bna-border rounded-lg space-y-1.5">
-                  <div className="flex items-center gap-1.5">
+
+          {/* 2. FORMULAIRE DE LA FAÇADE SÉLECTIONNÉE */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-orange-400" />
+              2. Paramètres &amp; Dimensions ({activeFacade.nom})
+            </span>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="col-span-2">
+                <label className={lbl}>Famille de bardage</label>
+                <select
+                  className={field}
+                  value={activeFacade.famille}
+                  onChange={(e) => updateActive({ famille: e.target.value as FamillePose })}
+                >
+                  {(Object.keys(LABELS_FAMILLE) as FamillePose[]).map((k) => (
+                    <option key={k} value={k}>
+                      {LABELS_FAMILLE[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={lbl}>Largeur façade (m)</label>
+                <input
+                  className={field}
+                  inputMode="decimal"
+                  value={activeFacade.largeur}
+                  onChange={(e) => updateActive({ largeur: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className={lbl}>Hauteur mur (m)</label>
+                <input
+                  className={field}
+                  inputMode="decimal"
+                  value={activeFacade.hauteur}
+                  onChange={(e) => updateActive({ hauteur: e.target.value })}
+                />
+              </div>
+              <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-200 cursor-pointer py-1">
+                <input
+                  type="checkbox"
+                  checked={activeFacade.pignon}
+                  onChange={(e) => updateActive({ pignon: e.target.checked })}
+                  className="accent-orange-500"
+                />
+                Façade en Pignon (rampants sous toiture)
+              </label>
+              {activeFacade.pignon && (
+                <div className="col-span-2">
+                  <label className={lbl}>Hauteur au faîtage (m)</label>
+                  <input
+                    className={field}
+                    inputMode="decimal"
+                    value={activeFacade.faite}
+                    onChange={(e) => updateActive({ faite: e.target.value })}
+                  />
+                </div>
+              )}
+              {panneau && (
+                <>
+                  <div>
+                    <label className={lbl}>Module posé — larg. (mm)</label>
+                    <input
+                      className={field}
+                      inputMode="numeric"
+                      value={activeFacade.modL}
+                      onChange={(e) => updateActive({ modL: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Module posé — haut. (mm)</label>
+                    <input
+                      className={field}
+                      inputMode="numeric"
+                      value={activeFacade.modH}
+                      onChange={(e) => updateActive({ modH: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Plaque brute — long. (mm)</label>
+                    <input
+                      className={field}
+                      inputMode="numeric"
+                      value={activeFacade.plqL}
+                      onChange={(e) => updateActive({ plqL: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Plaque brute — larg. (mm)</label>
+                    <input
+                      className={field}
+                      inputMode="numeric"
+                      value={activeFacade.plqH}
+                      onChange={(e) => updateActive({ plqH: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className={lbl}>Sens de pose</label>
                     <select
-                      className="px-2 py-1 text-[11px] bg-bna-offwhite border border-bna-border rounded-md font-semibold"
-                      value={o.type}
+                      className={field}
+                      value={activeFacade.sens}
                       onChange={(e) =>
-                        handleUpdateOuverture(o.id, { type: e.target.value as OuvertureFormState["type"] })
+                        updateActive({ sens: e.target.value as "horizontal" | "vertical" })
                       }
                     >
-                      <option value="fenetre">Fenêtre</option>
-                      <option value="porte">Porte</option>
-                      <option value="baie">Baie vitrée</option>
+                      <option value="horizontal">Horizontal</option>
+                      <option value="vertical">Vertical</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className={lbl}>Rive min. (mm)</label>
                     <input
-                      className="flex-1 px-2 py-1 text-[11px] bg-white border border-bna-border rounded-md"
-                      value={o.nom}
-                      placeholder="Repère (ex: Fenêtre R+1)"
-                      onChange={(e) => handleUpdateOuverture(o.id, { nom: e.target.value })}
+                      className={field}
+                      inputMode="numeric"
+                      placeholder="250"
+                      value={activeFacade.minRiveWidth ?? "250"}
+                      onChange={(e) => updateActive({ minRiveWidth: e.target.value })}
+                      title="Largeur minimale d'une pièce de rive en mm (anti-micro-plaques)"
                     />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteOuverture(o.id)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded-md"
-                      title="Supprimer cette ouverture"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
                   </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    <div>
-                      <span className="text-[9px] text-bna-muted block">Pos X (m)</span>
-                      <input
-                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
-                        inputMode="decimal"
-                        value={o.x}
-                        onChange={(e) => handleUpdateOuverture(o.id, { x: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-bna-muted block">Pos Y sol (m)</span>
-                      <input
-                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
-                        inputMode="decimal"
-                        value={o.y}
-                        onChange={(e) => handleUpdateOuverture(o.id, { y: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-bna-muted block">Larg. (m)</span>
-                      <input
-                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
-                        inputMode="decimal"
-                        value={o.largeur}
-                        onChange={(e) => handleUpdateOuverture(o.id, { largeur: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-bna-muted block">Haut. (m)</span>
-                      <input
-                        className="w-full px-1.5 py-1 text-[11px] border border-bna-border rounded"
-                        inputMode="decimal"
-                        value={o.hauteur}
-                        onChange={(e) => handleUpdateOuverture(o.id, { hauteur: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  <label className="col-span-2 flex items-center gap-2 text-[11px] font-semibold text-slate-300 cursor-pointer py-1">
+                    <input
+                      type="checkbox"
+                      checked={activeFacade.rotation}
+                      onChange={(e) => updateActive({ rotation: e.target.checked })}
+                      className="accent-orange-500"
+                    />
+                    Pivot 90° autorisé sur la plaque brute (décor uni sans fil)
+                  </label>
+                </>
+              )}
+              <div className="col-span-2">
+                <label className={lbl}>Isolant ITE (mm, 0 = sans isolant)</label>
+                <input
+                  className={field}
+                  inputMode="numeric"
+                  value={activeFacade.isolant}
+                  onChange={(e) => updateActive({ isolant: e.target.value })}
+                />
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+
+          {/* 3. OUVERTURES DE LA FAÇADE (FENÊTRES / PORTES / BAIES) */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <DoorOpen className="w-3.5 h-3.5 text-sky-400" />
+                3. Ouvertures ({(activeFacade.ouvertures ?? []).length})
+              </span>
+              <button
+                type="button"
+                onClick={handleAddOuverture}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-slate-950 border border-slate-700 text-slate-200 rounded-lg hover:border-sky-400 active:scale-95"
+              >
+                <Plus className="w-3 h-3 text-sky-400" /> Ajouter fenêtre / porte
+              </button>
+            </div>
+            {(activeFacade.ouvertures ?? []).length > 0 ? (
+              <div className="space-y-2">
+                {(activeFacade.ouvertures ?? []).map((o) => (
+                  <div
+                    key={o.id}
+                    className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        className="px-2 py-1 text-[11px] bg-slate-900 border border-slate-700 text-sky-300 rounded-md font-bold"
+                        value={o.type}
+                        onChange={(e) =>
+                          handleUpdateOuverture(o.id, {
+                            type: e.target.value as OuvertureFormState["type"],
+                          })
+                        }
+                      >
+                        <option value="fenetre">Fenêtre</option>
+                        <option value="porte">Porte</option>
+                        <option value="baie">Baie vitrée</option>
+                      </select>
+                      <input
+                        className="flex-1 px-2 py-1 text-[11px] bg-slate-900 border border-slate-700 text-white rounded-md font-semibold"
+                        value={o.nom}
+                        placeholder="Repère (ex: Fenêtre R+1)"
+                        onChange={(e) => handleUpdateOuverture(o.id, { nom: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteOuverture(o.id)}
+                        className="p-1 text-red-400 hover:bg-red-950/50 rounded-md"
+                        title="Supprimer cette ouverture"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <div>
+                        <span className="text-[9px] text-slate-400 block">Pos X (m)</span>
+                        <input
+                          className="w-full px-1.5 py-1 text-[11px] bg-slate-900 border border-slate-700 text-white rounded font-bold"
+                          inputMode="decimal"
+                          value={o.x}
+                          onChange={(e) => handleUpdateOuverture(o.id, { x: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-400 block">Pos Y sol (m)</span>
+                        <input
+                          className="w-full px-1.5 py-1 text-[11px] bg-slate-900 border border-slate-700 text-white rounded font-bold"
+                          inputMode="decimal"
+                          value={o.y}
+                          onChange={(e) => handleUpdateOuverture(o.id, { y: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-400 block">Larg. (m)</span>
+                        <input
+                          className="w-full px-1.5 py-1 text-[11px] bg-slate-900 border border-slate-700 text-white rounded font-bold"
+                          inputMode="decimal"
+                          value={o.largeur}
+                          onChange={(e) => handleUpdateOuverture(o.id, { largeur: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-400 block">Haut. (m)</span>
+                        <input
+                          className="w-full px-1.5 py-1 text-[11px] bg-slate-900 border border-slate-700 text-white rounded font-bold"
+                          inputMode="decimal"
+                          value={o.hauteur}
+                          onChange={(e) => handleUpdateOuverture(o.id, { hauteur: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">
+                Aucune ouverture déclarée sur cette façade.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* COLONNE DROITE (Desktop lg:col-span-7) : PLAN 2D, MAQUETTE 3D, DÉBIT & MÉTRÉ */}
-        <div className="lg:col-span-7 space-y-3">
+        <div className="lg:col-span-7 space-y-4">
           {"erreur" in calcul ? (
-        <p className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0" /> {calcul.erreur}
-        </p>
-      ) : (
-        <>
-          <div className="grid grid-cols-4 gap-1 p-1 bg-bna-offwhite rounded-xl border border-bna-border text-[11px] font-semibold">
-            {([["plan", "Plan 2D", Layers], ["3d", "Plan 3D", Box], ["debit", "Débit", Ruler], ["metre", "Métré", Wrench]] as const).map(([k, label, Icon]) => (
-              <button key={k} type="button" onClick={() => setVue(k)}
-                disabled={!calcul.cal && k !== "metre" && k !== "3d"}
-                className={`py-2 rounded-lg flex items-center justify-center gap-1 disabled:opacity-40 ${vue === k ? "bg-white shadow-xs border border-bna-border text-bna-anthracite" : "text-bna-muted"}`}>
-                <Icon className="w-3.5 h-3.5" />{label}
-              </button>
-            ))}
-          </div>
-
-          {/* SÉLECTEUR DE PORTÉE : MÉTRÉ INDÉPENDANT DE LA FAÇADE vs CUMUL GLOBAL DE TOUTES LES FAÇADES */}
-          {facades.length > 1 && (vue === "metre" || vue === "debit" || !calcul.cal) && (
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-amber-50/80 border border-amber-200 rounded-xl text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setPorteeMetre("facade")}
-                className={`py-1.5 px-2 rounded-lg truncate transition-all ${
-                  porteeMetre === "facade"
-                    ? "bg-white text-bna-copper shadow-2xs border border-amber-300"
-                    : "text-amber-900/70 hover:text-amber-950"
-                }`}
-              >
-                Métré : {activeFacade.nom}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPorteeMetre("global")}
-                className={`py-1.5 px-2 rounded-lg truncate transition-all ${
-                  porteeMetre === "global"
-                    ? "bg-bna-copper text-white shadow-2xs"
-                    : "text-amber-900/70 hover:text-amber-950"
-                }`}
-              >
-                Cumul Global ({cumulGlobal.nbFacadesValides} façades)
-              </button>
-            </div>
-          )}
-
-          {calcul.cal?.piecesIncompatibles && (
-            <p className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] text-red-800">
-              <b>{calcul.cal.piecesIncompatibles.length} pièce(s) plus grandes que la plaque brute</b> (aucune orientation ne rentre) :
-              choisis une plaque plus grande ou un module plus petit.
+            <p className="p-3 bg-red-950/60 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" /> {calcul.erreur}
             </p>
-          )}
-
-          {vue === "plan" && calcul.cal && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1">
-                <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-bna-anthracite cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showPercages}
-                    onChange={(e) => setShowPercages(e.target.checked)}
-                  />
-                  Afficher les perçages DTU ({calcul.percagesSvg.length} pts)
-                </label>
+          ) : (
+            <>
+              {/* BARRE D'ONGLETS VUES (Plan 2D / Plan 3D / Débit / Métré) */}
+              <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 text-[11px] font-bold">
+                {(
+                  [
+                    ["plan", "Plan 2D", Layers],
+                    ["3d", "Plan 3D", Box],
+                    ["debit", "Débit", Ruler],
+                    ["metre", "Métré", Wrench],
+                  ] as const
+                ).map(([k, label, Icon]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setVue(k)}
+                    disabled={!calcul.cal && k !== "metre" && k !== "3d"}
+                    className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 ${
+                      vue === k
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
               </div>
-              <PleinEcran titre={`Plan de calepinage — ${activeFacade.nom}`}>
-                {(zoom) => (
-                  <PlanSvg
-                    r={calcul.cal!}
-                    chevrons={calcul.pose.positionsChevronsM}
-                    largeurM={calcul.L}
-                    ouvertures={calcul.ouverturesCalculees}
-                    percages={calcul.percagesSvg}
-                    showPercages={showPercages}
-                    zoom={zoom}
-                  />
-                )}
-              </PleinEcran>
-            </div>
-          )}
-          {vue === "3d" && (
-            <PleinEcran titre={`Maquette 3D Interactive — ${activeFacade.nom}`}>
-              {(zoom) => (
-                <BardagePlan3D
-                  activeFacade={calcul}
-                  allFacades={cumulGlobal.valides}
-                  zoom={zoom}
-                />
-              )}
-            </PleinEcran>
-          )}
-          {vue === "debit" && calcul.cal && (
-            <div className="space-y-3">
-              {cuttingListAffichee.length > 0 && (
-                <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted">
-                      {afficherGlobal
-                        ? `Bordereau Global (${cumulGlobal.nbFacadesValides} façades · ${cuttingListAffichee.length} formats)`
-                        : `Bordereau — ${activeFacade.nom} (${cuttingListAffichee.length} formats)`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyBordereau}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-bna-copper hover:underline"
-                    >
-                      {copiedDebit ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedDebit ? "Copié !" : "Copier"}</span>
-                    </button>
-                  </div>
-                  <div className="divide-y divide-bna-border/60 text-xs bg-white rounded-lg border border-bna-border overflow-hidden">
-                    {cuttingListAffichee.map((g) => (
-                      <div key={g.group_number} className="px-2.5 py-1.5 flex items-center justify-between">
-                        <div>
-                          <span className="font-mono font-bold text-[11px] text-bna-copper mr-2">{g.group_number}</span>
-                          <span className="font-semibold text-bna-anthracite">
-                            {g.width_mm} × {g.height_mm} mm
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <b className="text-bna-anthracite">{g.count} pce(s)</b>
-                          <span className="text-[10px] text-bna-muted ml-1.5">({g.surface_m2.toFixed(2)} m²)</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+
+              {/* SÉLECTEUR DE PORTÉE : MÉTRÉ INDÉPENDANT DE LA FAÇADE vs CUMUL GLOBAL */}
+              {facades.length > 1 && (vue === "metre" || vue === "debit" || !calcul.cal) && (
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setPorteeMetre("facade")}
+                    className={`py-1.5 px-2 rounded-lg truncate transition-all ${
+                      porteeMetre === "facade"
+                        ? "bg-orange-500/20 text-orange-300 border border-orange-500/50"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Façade : {activeFacade.nom}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPorteeMetre("global")}
+                    className={`py-1.5 px-2 rounded-lg truncate transition-all ${
+                      porteeMetre === "global"
+                        ? "bg-orange-500 text-white"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Cumul Global ({cumulGlobal.nbFacadesValides} façades)
+                  </button>
                 </div>
               )}
 
-              <PleinEcran titre={`Plan de débit des plaques — ${activeFacade.nom}`}>
-                {(zoom) => <DebitSvg r={calcul.cal!} zoom={zoom} />}
-              </PleinEcran>
-            </div>
-          )}
-          {(vue === "metre" || !calcul.cal) && (
-            <div className="space-y-3 text-xs">
-              {afficherGlobal ? (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      ["Façades cumulées", `${cumulGlobal.nbFacadesValides} façade(s)`],
-                      ["Surface nette totale", `${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²`],
-                      ["Pièces totales", `${cumulGlobal.nbPiecesTotales}`],
-                      ["Plaques à commander", `${cumulGlobal.nbPlaquesTotales}`],
-                      ["Chute nette moy.", `${cumulGlobal.tauxChuteGlobalPct.toFixed(1)} %`],
-                      ["Chevrons 3m totaux", `${cumulGlobal.nbSegmentsChevronsTotal} barres (${cumulGlobal.mlChevronsTotal.toFixed(1)} ml)`],
-                    ].map(([k, v]) => (
-                      <div key={k} className="p-2 bg-amber-50/70 border border-amber-200 rounded-lg">
-                        <span className="text-[9px] uppercase font-bold text-amber-900/70 block">{k}</span>
-                        <b className="text-bna-anthracite">{v}</b>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Détail façade par façade dans le cumul global */}
-                  <div className="p-2.5 bg-white border border-bna-border rounded-xl space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted block">
-                      Détail par façade enregistrée
-                    </span>
-                    {cumulGlobal.valides.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between text-[11px] py-1 border-b last:border-b-0 border-bna-border/50">
-                        <span className="font-semibold text-bna-anthracite">
-                          {r.nom} ({r.L} × {r.Hm} m)
-                        </span>
-                        <span className="text-bna-muted">
-                          <b>{r.surfaceM2.toFixed(2)} m²</b>
-                          {r.cal ? ` · ${r.cal.nbPlaquesNecessaires} plq.` : ""} · {r.pose.nbSegmentsChevrons} chevrons
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : calcul.cal ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    [`Surface nette (${activeFacade.nom})`, `${calcul.surfaceM2.toFixed(2)} m²`],
-                    ["Pièces posées", `${calcul.cal.nbPiecesPosees}`],
-                    ["Plaques à commander", `${calcul.cal.nbPlaquesNecessaires}`],
-                    ["Chute nette", `${calcul.cal.tauxChuteNettePct.toFixed(1)} %`],
-                    ["Chutes réutilisables", `${calcul.cal.totalChutesReutilisablesM2.toFixed(2)} m²`],
-                    ["Entraxe réel", `${Math.round(calcul.cal.entraxeReelMm)} mm`],
-                  ].map(([k, v]) => (
-                    <div key={k} className="p-2 bg-bna-offwhite border border-bna-border rounded-lg">
-                      <span className="text-[9px] uppercase font-bold text-bna-muted block">{k}</span>
-                      <b className="text-bna-anthracite">{v}</b>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="p-2 bg-bna-offwhite border border-bna-border rounded-lg text-[11px] text-bna-muted">
-                  Lames ({LABELS_FAMILLE[activeFacade.famille]}) : surface nette {calcul.surfaceM2.toFixed(2)} m² ; métré d&apos;ossature et de fixations ci-dessous.
+              {calcul.cal?.piecesIncompatibles && (
+                <p className="p-2.5 bg-red-950/60 border border-red-500/40 rounded-xl text-[11px] text-red-200">
+                  <b className="text-red-300">
+                    {calcul.cal.piecesIncompatibles.length} pièce(s) plus grandes que la plaque brute
+                  </b>{" "}
+                  (aucune orientation ne rentre) : choisis une plaque plus grande ou un module plus petit.
                 </p>
               )}
 
-              {/* LISTE DES BESOINS MATÉRIAUX & QUINCAILLERIE (FAÇADE SEULE OU CUMUL GLOBAL) */}
-              <div className="p-3 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-bna-muted flex items-center gap-1">
-                    <Package className="w-3.5 h-3.5 text-bna-copper" />
-                    {afficherGlobal
-                      ? `Besoins cumulés — ${cumulGlobal.nbFacadesValides} façades (${besoinsAffiches.length} postes)`
-                      : `Besoins — ${activeFacade.nom} (${besoinsAffiches.length} postes)`}
-                  </span>
+              {vue === "plan" && calcul.cal && (
+                <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-bold text-white">
+                      Élévation 2D cotée — {activeFacade.nom}
+                    </span>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showPercages}
+                        onChange={(e) => setShowPercages(e.target.checked)}
+                        className="accent-orange-500"
+                      />
+                      Perçages DTU ({calcul.percagesSvg.length} pts)
+                    </label>
+                  </div>
+                  <PleinEcran titre={`Plan de calepinage — ${activeFacade.nom}`}>
+                    {(zoom) => (
+                      <PlanSvg
+                        r={calcul.cal!}
+                        chevrons={calcul.pose.positionsChevronsM}
+                        largeurM={calcul.L}
+                        ouvertures={calcul.ouverturesCalculees}
+                        percages={calcul.percagesSvg}
+                        showPercages={showPercages}
+                        zoom={zoom}
+                      />
+                    )}
+                  </PleinEcran>
                 </div>
-                <div className="divide-y divide-bna-border/60 bg-white rounded-lg border border-bna-border overflow-hidden">
-                  {besoinsAffiches.map((b, idx) => (
-                    <div key={idx} className="px-2.5 py-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-bna-copper block">
-                          {b.categorie}
-                        </span>
-                        <span className="text-[11px] font-medium text-bna-anthracite block leading-snug">
-                          {b.designation}
-                        </span>
-                      </div>
-                      <span className="font-bold text-xs text-bna-anthracite shrink-0 bg-neutral-100 px-2 py-1 rounded-md border border-bna-border">
-                        {b.quantite} {b.unite}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {!afficherGlobal && (
-                <ul className="space-y-1 text-[11px] text-slate-700 list-disc list-inside bg-neutral-50 p-3 rounded-xl border border-bna-border/80">
-                  {calcul.pose.remarques.map((t, i) => <li key={i}>{t}</li>)}
-                </ul>
               )}
-            </div>
-          )}
 
-          {saveMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{saveMsg}</span>
-            </div>
-          )}
-          {saveErr && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>{saveErr}</span>
-            </div>
-          )}
-
-          {/* LOT F : EXPORTS PLAN & BORDEREAU PDF (A4) + EXCEL (.CSV) */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setIsPrintModalOpen(true)}
-              className="min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
-            >
-              <Printer className="w-4 h-4 text-bna-copper" />
-              <span>Plan & Bordereau PDF (A4)</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleExportCsv}
-              className="min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
-            >
-              <FileDown className="w-4 h-4 text-emerald-600" />
-              <span>Exporter Excel (.CSV)</span>
-            </button>
-          </div>
-
-          {/* ACTIONS LOT D & E : ENREGISTRER LES BESOINS GLOBAUX & OUVRIR COMMANDES FOURNISSEURS */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={handleSaveBardage}
-              disabled={isSaving || !chantierId}
-              className={`w-full min-h-[44px] text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98] ${
-                isSaving || !chantierId
-                  ? "bg-neutral-300 cursor-not-allowed"
-                  : "bg-bna-copper hover:bg-bna-copper-hover shadow-copper"
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>
-                {isSaving
-                  ? "Enregistrement en cours..."
-                  : chantierId
-                  ? facades.length > 1
-                    ? `Enregistrer les ${cumulGlobal.nbFacadesValides} façades & Générer les besoins globaux`
-                    : "Enregistrer sur le chantier & Générer les besoins"
-                  : "Choisis un chantier en haut pour enregistrer"}
-              </span>
-            </button>
-
-            {chantierId && (
-              <button
-                type="button"
-                onClick={() => setIsCommandesOpen(true)}
-                className="w-full min-h-[40px] bg-white hover:bg-neutral-50 text-bna-anthracite border border-bna-border font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
-              >
-                <Truck className="w-4 h-4 text-bna-copper" />
-                <span>Ouvrir Matériaux & Commandes Fournisseurs</span>
-              </button>
-            )}
-          </div>
-
-          {chantierId && (
-            <MateriauxCommandesModal
-              isOpen={isCommandesOpen}
-              onClose={() => setIsCommandesOpen(false)}
-              chantierId={chantierId}
-            />
-          )}
-
-          {/* MODAL FEUILLE OFFICIELLE A4 IMPRIMABLE / PDF VECTORIEL (LOT F) */}
-          {isPrintModalOpen && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
-            >
-              <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-bna-border overflow-hidden my-auto max-h-[95vh] flex flex-col">
-                <div className="flex items-center justify-between px-4 py-3 bg-bna-offwhite border-b border-bna-border print:hidden">
-                  <div>
-                    <h3 className="text-sm font-bold text-bna-anthracite">
-                      Dossier A4 Calepinage & Bordereau de Débit BNA
-                    </h3>
-                    <p className="text-[11px] text-bna-muted">
-                      Prêt pour impression ou enregistrement en PDF A4 vectoriel
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => window.print()}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-bna-copper text-white rounded-xl shadow-xs active:scale-95"
-                    >
-                      <Printer className="w-4 h-4" /> Imprimer / PDF A4
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsPrintModalOpen(false)}
-                      className="p-2 bg-white border border-bna-border rounded-xl text-bna-anthracite"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
+              {vue === "3d" && (
+                <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5">
+                  <PleinEcran titre={`Maquette 3D Interactive — ${activeFacade.nom}`}>
+                    {(zoom) => (
+                      <BardagePlan3D
+                        activeFacade={calcul}
+                        allFacades={cumulGlobal.valides}
+                        zoom={zoom}
+                      />
+                    )}
+                  </PleinEcran>
                 </div>
+              )}
 
-                <div className="p-5 overflow-y-auto space-y-6 text-xs text-bna-anthracite">
-                  {/* En-tête BNA */}
-                  <div className="flex items-start justify-between border-b-2 border-bna-copper pb-3">
-                    <div>
-                      <p className="text-sm font-extrabold tracking-wide text-bna-copper uppercase">
-                        BOIS NATURE AMÉNAGEMENT (BNA)
-                      </p>
-                      <h4 className="text-base font-bold text-bna-anthracite">
-                        Dossier Technique de Calepinage, Débit & Métré Bardage
-                      </h4>
-                      <p className="text-[11px] text-bna-muted">
-                        Édité le {new Date().toLocaleDateString("fr-FR")}
-                        {activeVersion ? ` · Version validée V${activeVersion}` : ""}
-                      </p>
-                    </div>
-                    <div className="text-right bg-bna-offwhite p-2.5 rounded-xl border border-bna-border">
-                      <span className="text-[10px] uppercase font-bold text-bna-muted block">
-                        Cumul Chantier ({cumulGlobal.nbFacadesValides} façade(s))
-                      </span>
-                      <span className="text-sm font-extrabold text-bna-anthracite">
-                        {cumulGlobal.surfaceTotaleM2.toFixed(2)} m² nets
-                      </span>
-                      {cumulGlobal.nbPlaquesTotales > 0 && (
-                        <span className="text-[11px] text-bna-copper font-bold block">
-                          {cumulGlobal.nbPlaquesTotales} plaques brutes
+              {vue === "debit" && calcul.cal && (
+                <div className="space-y-3">
+                  {cuttingListAffichee.length > 0 && (
+                    <div className="p-3.5 bg-slate-900/90 border border-slate-800 rounded-2xl space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-orange-400">
+                          {afficherGlobal
+                            ? `Bordereau Global (${cumulGlobal.nbFacadesValides} façades · ${cuttingListAffichee.length} formats)`
+                            : `Bordereau — ${activeFacade.nom} (${cuttingListAffichee.length} formats)`}
                         </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 1. Plans 2D cotés de chaque façade */}
-                  <div className="space-y-4">
-                    <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
-                      1. Plans 2D cotés par façade
-                    </h5>
-                    {cumulGlobal.valides.map((r) => (
-                      <div key={r.id} className="p-3 border border-bna-border rounded-xl space-y-2 break-inside-avoid">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-sm text-bna-anthracite">
-                            {r.nom} — {LABELS_FAMILLE[r.famille]} ({r.L} × {r.Hm} m)
-                          </span>
-                          <span className="text-[11px] font-semibold text-bna-muted">
-                            Surface nette : <b>{r.surfaceM2.toFixed(2)} m²</b>
-                            {r.surfaceOuverturesM2 > 0 ? ` (ouvertures déduites : ${r.surfaceOuverturesM2.toFixed(2)} m²)` : ""}
-                            {r.cal ? ` · ${r.cal.nbPiecesPosees} pièces · ${r.cal.nbPlaquesNecessaires} plaques` : ""}
-                          </span>
-                        </div>
-                        {r.cal && (
-                          <PlanSvg
-                            r={r.cal}
-                            chevrons={r.pose.positionsChevronsM}
-                            largeurM={r.L}
-                            ouvertures={r.ouverturesCalculees}
-                            percages={r.percagesSvg}
-                            showPercages={showPercages}
-                          />
-                        )}
+                        <button
+                          type="button"
+                          onClick={handleCopyBordereau}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-400 hover:text-orange-300"
+                        >
+                          {copiedDebit ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                          <span>{copiedDebit ? "Copié !" : "Copier"}</span>
+                        </button>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* 2. Bordereau de débit atelier */}
-                  {cumulGlobal.cuttingListGlobal.length > 0 && (
-                    <div className="space-y-2 break-inside-avoid">
-                      <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
-                        2. Bordereau de débit atelier ({cumulGlobal.cuttingListGlobal.length} formats regroupés)
-                      </h5>
-                      <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
-                        <thead>
-                          <tr className="bg-bna-offwhite">
-                            <th className="p-2 border border-bna-border">Groupe</th>
-                            <th className="p-2 border border-bna-border">Format L × H (mm)</th>
-                            <th className="p-2 border border-bna-border">Quantité</th>
-                            <th className="p-2 border border-bna-border">Surface (m²)</th>
-                            <th className="p-2 border border-bna-border">Matériau</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {cumulGlobal.cuttingListGlobal.map((g) => (
-                            <tr key={g.group_number}>
-                              <td className="p-2 border border-bna-border font-mono font-bold text-bna-copper">
+                      <div className="divide-y divide-slate-800 text-xs bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                        {cuttingListAffichee.map((g) => (
+                          <div
+                            key={g.group_number}
+                            className="px-3 py-2 flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="font-mono font-bold text-[11px] text-orange-400 mr-2">
                                 {g.group_number}
-                              </td>
-                              <td className="p-2 border border-bna-border font-semibold">
+                              </span>
+                              <span className="font-semibold text-slate-200">
                                 {g.width_mm} × {g.height_mm} mm
-                              </td>
-                              <td className="p-2 border border-bna-border font-bold">{g.count} pce(s)</td>
-                              <td className="p-2 border border-bna-border">{g.surface_m2.toFixed(2)} m²</td>
-                              <td className="p-2 border border-bna-border">{g.material}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <b className="text-white">{g.count} pce(s)</b>
+                              <span className="text-[10px] text-slate-400 ml-1.5">
+                                ({g.surface_m2.toFixed(2)} m²)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* 3. Besoins matériaux & quincaillerie */}
-                  <div className="space-y-2 break-inside-avoid">
-                    <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
-                      3. Quantitatif global matériaux & quincaillerie ({cumulGlobal.besoinsGlobaux.length} postes)
-                    </h5>
-                    <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
-                      <thead>
-                        <tr className="bg-bna-offwhite">
-                          <th className="p-2 border border-bna-border">Catégorie</th>
-                          <th className="p-2 border border-bna-border">Désignation</th>
-                          <th className="p-2 border border-bna-border text-right">Quantité</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cumulGlobal.besoinsGlobaux.map((b, i) => (
-                          <tr key={i}>
-                            <td className="p-2 border border-bna-border uppercase font-bold text-[10px] text-bna-copper">
-                              {b.categorie}
-                            </td>
-                            <td className="p-2 border border-bna-border">{b.designation}</td>
-                            <td className="p-2 border border-bna-border text-right font-bold">
-                              {b.quantite} {b.unite}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5">
+                    <PleinEcran titre={`Plan de débit des plaques — ${activeFacade.nom}`}>
+                      {(zoom) => <DebitSvg r={calcul.cal!} zoom={zoom} />}
+                    </PleinEcran>
                   </div>
                 </div>
+              )}
+
+              {(vue === "metre" || !calcul.cal) && (
+                <div className="space-y-3 text-xs">
+                  {afficherGlobal ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          ["Façades cumulées", `${cumulGlobal.nbFacadesValides} façade(s)`],
+                          ["Surface nette totale", `${cumulGlobal.surfaceTotaleM2.toFixed(2)} m²`],
+                          ["Pièces totales", `${cumulGlobal.nbPiecesTotales}`],
+                          ["Plaques à commander", `${cumulGlobal.nbPlaquesTotales}`],
+                          ["Chute nette moy.", `${cumulGlobal.tauxChuteGlobalPct.toFixed(1)} %`],
+                          [
+                            "Chevrons 3m totaux",
+                            `${cumulGlobal.nbSegmentsChevronsTotal} barres (${cumulGlobal.mlChevronsTotal.toFixed(1)} ml)`,
+                          ],
+                        ].map(([k, v]) => (
+                          <div
+                            key={k}
+                            className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"
+                          >
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                              {k}
+                            </span>
+                            <b className="text-sm text-orange-400">{v}</b>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Détail façade par façade dans le cumul global */}
+                      <div className="p-3.5 bg-slate-900/90 border border-slate-800 rounded-2xl space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Détail par façade enregistrée
+                        </span>
+                        {cumulGlobal.valides.map((r) => (
+                          <div
+                            key={r.id}
+                            className="flex items-center justify-between text-[11px] py-1.5 border-b last:border-b-0 border-slate-800"
+                          >
+                            <span className="font-semibold text-white">
+                              {r.nom} ({r.L} × {r.Hm} m)
+                            </span>
+                            <span className="text-slate-400">
+                              <b className="text-orange-300">{r.surfaceM2.toFixed(2)} m²</b>
+                              {r.cal ? ` · ${r.cal.nbPlaquesNecessaires} plq.` : ""} ·{" "}
+                              {r.pose.nbSegmentsChevrons} chevrons
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : calcul.cal ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        [`Surface nette (${activeFacade.nom})`, `${calcul.surfaceM2.toFixed(2)} m²`],
+                        ["Pièces posées", `${calcul.cal.nbPiecesPosees}`],
+                        ["Plaques à commander", `${calcul.cal.nbPlaquesNecessaires}`],
+                        ["Chute nette", `${calcul.cal.tauxChuteNettePct.toFixed(1)} %`],
+                        ["Chutes réutilisables", `${calcul.cal.totalChutesReutilisablesM2.toFixed(2)} m²`],
+                        ["Entraxe réel", `${Math.round(calcul.cal.entraxeReelMm)} mm`],
+                      ].map(([k, v]) => (
+                        <div
+                          key={k}
+                          className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl"
+                        >
+                          <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                            {k}
+                          </span>
+                          <b className="text-sm text-white">{v}</b>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-300">
+                      Lames ({LABELS_FAMILLE[activeFacade.famille]}) : surface nette{" "}
+                      <b className="text-white">{calcul.surfaceM2.toFixed(2)} m²</b> ; métré
+                      d&apos;ossature et de fixations ci-dessous.
+                    </p>
+                  )}
+
+                  {/* LISTE DES BESOINS MATÉRIAUX & QUINCAILLERIE */}
+                  <div className="p-3.5 bg-slate-900/90 border border-slate-800 rounded-2xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <Package className="w-4 h-4 text-orange-400" />
+                        {afficherGlobal
+                          ? `Besoins cumulés — ${cumulGlobal.nbFacadesValides} façades (${besoinsAffiches.length} postes)`
+                          : `Besoins — ${activeFacade.nom} (${besoinsAffiches.length} postes)`}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-800 bg-slate-950 rounded-xl border border-slate-800 overflow-hidden">
+                      {besoinsAffiches.map((b, idx) => (
+                        <div
+                          key={idx}
+                          className="px-3 py-2 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-orange-400 block">
+                              {b.categorie}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-200 block leading-snug">
+                              {b.designation}
+                            </span>
+                          </div>
+                          <span className="font-bold text-xs text-white shrink-0 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-700">
+                            {b.quantite} {b.unite}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {!afficherGlobal && (
+                    <ul className="space-y-1 text-[11px] text-slate-300 list-disc list-inside bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800">
+                      {calcul.pose.remarques.map((t, i) => (
+                        <li key={i}>{t}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {saveMsg && (
+                <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{saveMsg}</span>
+                </div>
+              )}
+              {saveErr && (
+                <div className="p-3 bg-red-950/60 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{saveErr}</span>
+                </div>
+              )}
+
+              {/* LOT F : EXPORTS PLAN & BORDEREAU PDF (A4) + EXCEL (.CSV) */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPrintModalOpen(true)}
+                  className="min-h-[42px] bg-slate-900 hover:bg-slate-800 text-slate-100 border border-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+                >
+                  <Printer className="w-4 h-4 text-orange-400" />
+                  <span>Plan &amp; Bordereau PDF (A4)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCsv}
+                  className="min-h-[42px] bg-slate-900 hover:bg-slate-800 text-slate-100 border border-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+                >
+                  <FileDown className="w-4 h-4 text-emerald-400" />
+                  <span>Exporter Excel (.CSV)</span>
+                </button>
               </div>
-            </div>
+
+              {/* ACTIONS LOT D & E : ENREGISTRER LES BESOINS GLOBAUX & OUVRIR COMMANDES FOURNISSEURS */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleSaveBardage}
+                  disabled={isSaving || !chantierId}
+                  className={`w-full min-h-[44px] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98] ${
+                    isSaving || !chantierId
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700"
+                      : "bg-orange-500 hover:bg-orange-600 shadow-lg"
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    {isSaving
+                      ? "Enregistrement en cours..."
+                      : chantierId
+                      ? facades.length > 1
+                        ? `Enregistrer les ${cumulGlobal.nbFacadesValides} façades & Générer les besoins globaux`
+                        : "Enregistrer sur le chantier & Générer les besoins"
+                      : "Choisis un chantier en haut pour enregistrer"}
+                  </span>
+                </button>
+
+                {chantierId && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCommandesOpen(true)}
+                    className="w-full min-h-[42px] bg-slate-900 hover:bg-slate-800 text-slate-100 border border-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
+                  >
+                    <Truck className="w-4 h-4 text-orange-400" />
+                    <span>Ouvrir Matériaux &amp; Commandes Fournisseurs</span>
+                  </button>
+                )}
+              </div>
+
+              {chantierId && (
+                <MateriauxCommandesModal
+                  isOpen={isCommandesOpen}
+                  onClose={() => setIsCommandesOpen(false)}
+                  chantierId={chantierId}
+                />
+              )}
+
+              {/* MODAL FEUILLE OFFICIELLE A4 IMPRIMABLE / PDF VECTORIEL (LOT F - conservé fond clair pour impression papier) */}
+              {isPrintModalOpen && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-2 sm:p-4 overflow-y-auto"
+                >
+                  <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-bna-border overflow-hidden my-auto max-h-[95vh] flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 print:hidden">
+                      <div>
+                        <h3 className="text-sm font-bold text-white">
+                          Dossier A4 Calepinage &amp; Bordereau de Débit BNA
+                        </h3>
+                        <p className="text-[11px] text-slate-400">
+                          Prêt pour impression ou enregistrement en PDF A4 vectoriel
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl shadow-xs active:scale-95"
+                        >
+                          <Printer className="w-4 h-4" /> Imprimer / PDF A4
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsPrintModalOpen(false)}
+                          className="p-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-200"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-5 overflow-y-auto space-y-6 text-xs text-bna-anthracite">
+                      {/* En-tête BNA */}
+                      <div className="flex items-start justify-between border-b-2 border-bna-copper pb-3">
+                        <div>
+                          <p className="text-sm font-extrabold tracking-wide text-bna-copper uppercase">
+                            BOIS NATURE AMÉNAGEMENT (BNA)
+                          </p>
+                          <h4 className="text-base font-bold text-bna-anthracite">
+                            Dossier Technique de Calepinage, Débit &amp; Métré Bardage
+                          </h4>
+                          <p className="text-[11px] text-bna-muted">
+                            Édité le {new Date().toLocaleDateString("fr-FR")}
+                            {activeVersion ? ` · Version validée V${activeVersion}` : ""}
+                          </p>
+                        </div>
+                        <div className="text-right bg-bna-offwhite p-2.5 rounded-xl border border-bna-border">
+                          <span className="text-[10px] uppercase font-bold text-bna-muted block">
+                            Cumul Chantier ({cumulGlobal.nbFacadesValides} façade(s))
+                          </span>
+                          <span className="text-sm font-extrabold text-bna-anthracite">
+                            {cumulGlobal.surfaceTotaleM2.toFixed(2)} m² nets
+                          </span>
+                          {cumulGlobal.nbPlaquesTotales > 0 && (
+                            <span className="text-[11px] text-bna-copper font-bold block">
+                              {cumulGlobal.nbPlaquesTotales} plaques brutes
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 1. Plans 2D cotés de chaque façade */}
+                      <div className="space-y-4">
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                          1. Plans 2D cotés par façade
+                        </h5>
+                        {cumulGlobal.valides.map((r) => (
+                          <div
+                            key={r.id}
+                            className="p-3 border border-bna-border rounded-xl space-y-2 break-inside-avoid"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-sm text-bna-anthracite">
+                                {r.nom} — {LABELS_FAMILLE[r.famille]} ({r.L} × {r.Hm} m)
+                              </span>
+                              <span className="text-[11px] font-semibold text-bna-muted">
+                                Surface nette : <b>{r.surfaceM2.toFixed(2)} m²</b>
+                                {r.surfaceOuverturesM2 > 0
+                                  ? ` (ouvertures déduites : ${r.surfaceOuverturesM2.toFixed(2)} m²)`
+                                  : ""}
+                                {r.cal
+                                  ? ` · ${r.cal.nbPiecesPosees} pièces · ${r.cal.nbPlaquesNecessaires} plaques`
+                                  : ""}
+                              </span>
+                            </div>
+                            {r.cal && (
+                              <PlanSvg
+                                r={r.cal}
+                                chevrons={r.pose.positionsChevronsM}
+                                largeurM={r.L}
+                                ouvertures={r.ouverturesCalculees}
+                                percages={r.percagesSvg}
+                                showPercages={showPercages}
+                                lightMode
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* 2. Bordereau de débit atelier */}
+                      {cumulGlobal.cuttingListGlobal.length > 0 && (
+                        <div className="space-y-2 break-inside-avoid">
+                          <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                            2. Bordereau de débit atelier ({cumulGlobal.cuttingListGlobal.length} formats regroupés)
+                          </h5>
+                          <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
+                            <thead>
+                              <tr className="bg-bna-offwhite">
+                                <th className="p-2 border border-bna-border">Groupe</th>
+                                <th className="p-2 border border-bna-border">Format L × H (mm)</th>
+                                <th className="p-2 border border-bna-border">Quantité</th>
+                                <th className="p-2 border border-bna-border">Surface (m²)</th>
+                                <th className="p-2 border border-bna-border">Matériau</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cumulGlobal.cuttingListGlobal.map((g) => (
+                                <tr key={g.group_number}>
+                                  <td className="p-2 border border-bna-border font-mono font-bold text-bna-copper">
+                                    {g.group_number}
+                                  </td>
+                                  <td className="p-2 border border-bna-border font-semibold">
+                                    {g.width_mm} × {g.height_mm} mm
+                                  </td>
+                                  <td className="p-2 border border-bna-border font-bold">
+                                    {g.count} pce(s)
+                                  </td>
+                                  <td className="p-2 border border-bna-border">
+                                    {g.surface_m2.toFixed(2)} m²
+                                  </td>
+                                  <td className="p-2 border border-bna-border">{g.material}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* 3. Besoins matériaux & quincaillerie */}
+                      <div className="space-y-2 break-inside-avoid">
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-bna-copper border-b border-bna-border pb-1">
+                          3. Quantitatif global matériaux &amp; quincaillerie ({cumulGlobal.besoinsGlobaux.length} postes)
+                        </h5>
+                        <table className="w-full text-left border-collapse border border-bna-border text-[11px]">
+                          <thead>
+                            <tr className="bg-bna-offwhite">
+                              <th className="p-2 border border-bna-border">Catégorie</th>
+                              <th className="p-2 border border-bna-border">Désignation</th>
+                              <th className="p-2 border border-bna-border text-right">Quantité</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cumulGlobal.besoinsGlobaux.map((b, i) => (
+                              <tr key={i}>
+                                <td className="p-2 border border-bna-border uppercase font-bold text-[10px] text-bna-copper">
+                                  {b.categorie}
+                                </td>
+                                <td className="p-2 border border-bna-border">{b.designation}</td>
+                                <td className="p-2 border border-bna-border text-right font-bold">
+                                  {b.quantite} {b.unite}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
         </div>
       </div>
     </div>

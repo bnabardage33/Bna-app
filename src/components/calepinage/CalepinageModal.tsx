@@ -26,9 +26,9 @@ interface CalepinageModalProps {
   onCalepinageSaved?: () => void;
 }
 
-const labelCls = "text-[11px] font-semibold text-bna-muted uppercase block";
+const labelCls = "text-[11px] font-bold text-slate-400 uppercase block";
 const selectCls =
-  "w-full mt-1 px-3 py-2 border border-bna-border rounded-xl text-xs font-semibold text-bna-anthracite bg-white focus:outline-hidden focus:border-bna-copper";
+  "w-full mt-1 px-3 py-2 border border-slate-700 rounded-xl text-xs font-semibold text-white bg-slate-900 focus:outline-hidden focus:border-orange-500";
 
 export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   isOpen,
@@ -154,46 +154,46 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div
-        className="w-full max-w-md md:max-w-5xl lg:max-w-6xl bg-white rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-5 shadow-2xl border border-bna-border animate-in slide-in-from-bottom duration-200"
+        className="w-full max-w-md md:max-w-5xl lg:max-w-6xl bg-slate-950 text-slate-100 rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-5 shadow-2xl border border-slate-800 animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-orange-50 text-bna-copper">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-400">
               <Calculator className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-display font-bold text-base text-bna-anthracite">
+                <h3 className="font-display font-bold text-base text-white">
                   {selectedMetier === "cloture"
-                    ? "Calepinage Clôture"
+                    ? "Calepinage Clôture Pro"
                     : selectedMetier === "facade"
-                    ? "Calepinage Bardage"
+                    ? "Calepinage Bardage Pro (DTU 41.2)"
                     : "Calepinage Terrasse Pro (DTU 51.4)"}
                 </h3>
                 {sourceVersionNumber !== null ? (
-                  <span className="text-[10px] font-bold text-bna-copper bg-bna-copper-light/60 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <span className="text-[10px] font-bold text-orange-300 bg-orange-500/20 border border-orange-500/30 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                     <History className="w-2.5 h-2.5" />
                     {sourceStatut === "valide"
                       ? `Correction V${sourceVersionNumber} → V${nextVersionNumber}`
                       : `Reprise V${sourceVersionNumber} → V${nextVersionNumber}`}
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold text-bna-copper bg-bna-copper-light/60 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                  <span className="text-[10px] font-bold text-orange-300 bg-orange-500/20 border border-orange-500/30 px-2 py-0.5 rounded-full flex items-center gap-0.5">
                     <History className="w-2.5 h-2.5" />V{nextVersionNumber}
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-bna-muted">
-                Plan de pose 2D, simulation coupe perdue &amp; quantitatif chantier
+              <p className="text-[11px] text-slate-400">
+                Plan de pose 2D/3D, simulation coupe &amp; quantitatif chantier BNA
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-neutral-100 text-bna-muted"
+            className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300"
             aria-label="Fermer"
           >
             <X className="w-5 h-5" />
@@ -218,15 +218,15 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-1.5 p-1 bg-bna-offwhite rounded-xl border border-bna-border mt-3 text-xs font-semibold">
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-900 rounded-xl border border-slate-800 mt-3 text-xs font-bold">
           {(["terrasse", "facade", "cloture"] as MetierType[]).map((m) => (
             <button
               key={m}
               onClick={() => setSelectedMetier(m)}
               className={`py-2 px-1 rounded-lg text-center transition-all ${
                 selectedMetier === m
-                  ? "bg-white text-bna-anthracite shadow-xs border border-bna-border"
-                  : "text-bna-muted hover:text-bna-anthracite"
+                  ? "bg-orange-500 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
               }`}
             >
               {METIERS_CONFIG[m].label.split(" / ")[0]}
@@ -259,14 +259,14 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
         )}
 
         {saveSuccessMsg && (
-          <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="mt-3 p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-xs text-emerald-200 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{saveSuccessMsg}</span>
           </div>
         )}
         {saveError && (
-          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="mt-3 p-3 bg-red-950/60 border border-red-500/40 rounded-xl text-xs text-red-200 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
             <span>{saveError}</span>
           </div>
         )}

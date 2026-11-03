@@ -667,15 +667,15 @@ export const BardagePlan3D: React.FC<{
   return (
     <div className="space-y-2.5">
       {/* Barre d'outils 3D : Mode (Coupe Éclatée DTU vs Bâtiment Multi-Façades) + Angles Caméra */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-bna-offwhite border border-bna-border rounded-xl">
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setMode3D("coupe")}
             className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 transition-all ${
               mode3D === "coupe"
-                ? "bg-bna-copper text-white shadow-2xs"
-                : "bg-white text-bna-anthracite border border-bna-border"
+                ? "bg-orange-500 text-white shadow-sm"
+                : "bg-slate-900 text-slate-300 border border-slate-700 hover:text-white"
             }`}
           >
             <Layers className="w-3.5 h-3.5" /> Coupe 3D ({activeFacade.nom})
@@ -686,8 +686,8 @@ export const BardagePlan3D: React.FC<{
               onClick={() => setMode3D("batiment")}
               className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 transition-all ${
                 mode3D === "batiment"
-                  ? "bg-bna-copper text-white shadow-2xs"
-                  : "bg-white text-bna-anthracite border border-bna-border"
+                  ? "bg-orange-500 text-white shadow-sm"
+                  : "bg-slate-900 text-slate-300 border border-slate-700 hover:text-white"
               }`}
             >
               <Box className="w-3.5 h-3.5" /> Bâtiment 3D ({allFacades.length} façades)
@@ -703,8 +703,8 @@ export const BardagePlan3D: React.FC<{
               onClick={() => setEclate((v) => !v)}
               className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${
                 eclate
-                  ? "bg-amber-100 border-amber-400 text-amber-950"
-                  : "bg-white border-bna-border text-bna-anthracite"
+                  ? "bg-orange-500/20 border-orange-500 text-orange-300"
+                  : "bg-slate-900 border-slate-700 text-slate-300"
               }`}
             >
               {eclate ? "Vue Éclatée DTU ✓" : "Vue Compacte"}
@@ -716,7 +716,7 @@ export const BardagePlan3D: React.FC<{
               setYawDeg(-28);
               setPitchDeg(16);
             }}
-            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white border border-bna-border text-bna-anthracite"
+            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
           >
             Iso G
           </button>
@@ -726,7 +726,7 @@ export const BardagePlan3D: React.FC<{
               setYawDeg(32);
               setPitchDeg(18);
             }}
-            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white border border-bna-border text-bna-anthracite"
+            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
           >
             Iso D
           </button>
@@ -736,7 +736,7 @@ export const BardagePlan3D: React.FC<{
               setYawDeg(0);
               setPitchDeg(0);
             }}
-            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white border border-bna-border text-bna-anthracite"
+            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
           >
             Face
           </button>
@@ -746,7 +746,7 @@ export const BardagePlan3D: React.FC<{
               setYawDeg(-25);
               setPitchDeg(55);
             }}
-            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-white border border-bna-border text-bna-anthracite"
+            className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white"
           >
             Dessus
           </button>
@@ -757,7 +757,7 @@ export const BardagePlan3D: React.FC<{
               setPitchDeg(16);
               setSelectedPiece(null);
             }}
-            className="p-1 rounded-lg bg-white border border-bna-border text-bna-muted hover:text-bna-anthracite"
+            className="p-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-white"
             title="Réinitialiser la vue 3D"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -767,28 +767,28 @@ export const BardagePlan3D: React.FC<{
 
       {/* Filtres de visibilité des couches DTU */}
       <div className="flex flex-wrap items-center gap-2 text-[11px] px-1">
-        <span className="text-[10px] font-bold uppercase text-bna-muted flex items-center gap-1">
-          <Eye className="w-3 h-3 text-bna-copper" /> Couches 3D :
+        <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
+          <Eye className="w-3 h-3 text-orange-400" /> Couches 3D :
         </span>
         {[
           { label: "Mur support", state: showMur, set: setShowMur, dot: "#94A3B8" },
           { label: "Isolant ITE", state: showIsolant, set: setShowIsolant, dot: "#F59E0B" },
-          { label: "Chevrons", state: showChevrons, set: setShowChevrons, dot: "#2563EB" },
-          { label: "Panneaux", state: showPanneaux, set: setShowPanneaux, dot: "#C15C3D" },
+          { label: "Chevrons", state: showChevrons, set: setShowChevrons, dot: "#38BDF8" },
+          { label: "Panneaux", state: showPanneaux, set: setShowPanneaux, dot: "#F97316" },
           { label: "Ouvertures", state: showOuvertures, set: setShowOuvertures, dot: "#0284C7" },
         ].map((layer) => (
           <label
             key={layer.label}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-bna-border cursor-pointer select-none"
+            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-950 border border-slate-800 cursor-pointer select-none"
           >
             <input
               type="checkbox"
               checked={layer.state}
               onChange={(e) => layer.set(e.target.checked)}
-              className="accent-bna-copper"
+              className="accent-orange-500"
             />
             <i className="w-2 h-2 rounded-full inline-block" style={{ background: layer.dot }} />
-            <span className="font-semibold text-bna-anthracite">{layer.label}</span>
+            <span className="font-semibold text-slate-200">{layer.label}</span>
           </label>
         ))}
       </div>
@@ -801,7 +801,7 @@ export const BardagePlan3D: React.FC<{
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
-          className="rounded-xl bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 border border-bna-border block touch-none cursor-grab active:cursor-grabbing select-none"
+          className="rounded-xl bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border border-slate-800 block touch-none cursor-grab active:cursor-grabbing select-none"
           style={
             zoom
               ? { width: `${Math.round(zoom * 100)}%`, minWidth: `${Math.round(zoom * 640)}px`, maxWidth: "none" }
@@ -831,7 +831,7 @@ export const BardagePlan3D: React.FC<{
               >
                 <polygon
                   points={pointsAttr}
-                  fill={isSel ? "#C15C3D" : poly.fill}
+                  fill={isSel ? "#F97316" : poly.fill}
                   stroke={isSel ? "#FFFFFF" : poly.stroke}
                   strokeWidth={isSel ? 0.022 : poly.strokeWidth * 0.012}
                   strokeLinejoin="round"
@@ -870,7 +870,7 @@ export const BardagePlan3D: React.FC<{
         </svg>
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-bna-muted px-1">
+      <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
         <span>
           Glisse le doigt sur la maquette 3D pour tourner à 360° (Angle : {yawDeg}° / {pitchDeg}°)
         </span>
@@ -882,11 +882,11 @@ export const BardagePlan3D: React.FC<{
       </div>
 
       {selectedPiece && (
-        <p className="text-[11px] bg-bna-offwhite border border-bna-border rounded-lg p-2">
-          <b>{selectedPiece.facadeNom}</b> · Panneau <b>{selectedPiece.piece.repere}</b> ·{" "}
+        <p className="text-[11px] bg-slate-950 border border-orange-500/40 rounded-xl p-2.5 text-slate-200">
+          <b className="text-orange-400">{selectedPiece.facadeNom}</b> · Panneau <b className="text-white">{selectedPiece.piece.repere}</b> ·{" "}
           {Math.round(selectedPiece.piece.largeurM * 1000)} ×{" "}
           {Math.round(selectedPiece.piece.hauteurM * 1000)} mm ·{" "}
-          {selectedPiece.piece.surfaceM2.toFixed(2)} m² · Plaque brute n°
+          <b className="text-white">{selectedPiece.piece.surfaceM2.toFixed(2)} m²</b> · Plaque brute n°
           {selectedPiece.piece.plaqueIndex ?? "—"}
         </p>
       )}
