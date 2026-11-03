@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
-    "postinstall": "node scripts/patch-next.js && termux-fix-shebang node_modules/.bin/*"
+    "postinstall": "node scripts/patch-next.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

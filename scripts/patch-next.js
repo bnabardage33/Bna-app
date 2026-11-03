@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const swcIndexPath = path.join(__dirname, '..', 'node_modules', 'next', 'dist', 'build', 'swc', 'index.js');
 
@@ -23,5 +24,17 @@ if (fs.existsSync(swcIndexPath)) {
     }
   } else {
     console.log('[bna-app] Next.js SWC already patched for Android/Termux.');
+  }
+}
+
+// Fix Termux shebangs only when running on Android/Termux
+if (process.platform === 'android') {
+  try {
+    execSync('command -v termux-fix-shebang >/dev/null 2>&1 && termux-fix-shebang node_modules/.bin/* || true', {
+      stdio: 'inherit',
+    });
+    console.log('[bna-app] Applied termux-fix-shebang for Android/Termux.');
+  } catch (err) {
+    // Non-blocking
   }
 }
