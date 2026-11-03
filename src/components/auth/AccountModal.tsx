@@ -30,11 +30,25 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const displayName = profil?.prenom
-    ? `${profil.prenom} ${profil.nom || ""}`.trim()
-    : user?.email?.split("@")[0] || "Utilisateur";
+  const displayName =
+    profil?.prenom
+      ? `${profil.prenom} ${profil.nom || ""}`.trim()
+      : user?.email?.toLowerCase().includes("bna")
+      ? "Gaël"
+      : user?.email?.split("@")[0] || "Gaël";
 
   const initial = displayName.charAt(0).toUpperCase();
+
+  const roleLabel =
+    !profil?.role || profil.role === "dirigeant" || (profil.role as string) === "gerant"
+      ? "Gérant"
+      : profil.role === "chantier"
+      ? "Conducteur de travaux"
+      : profil.role === "commercial"
+      ? "Commercial"
+      : profil.role === "administratif"
+      ? "Administratif"
+      : String(profil.role);
 
   return (
     <div
@@ -92,7 +106,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({ isOpen, onClose }) =
                   <Shield className="w-3.5 h-3.5 text-bna-copper" />
                   Rôle
                 </span>
-                <span className="font-bold capitalize">{profil?.role || "Conducteur de travaux"}</span>
+                <span className="font-bold">{roleLabel}</span>
               </div>
 
               <div className="flex items-center justify-between text-slate-700">

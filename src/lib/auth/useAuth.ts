@@ -42,9 +42,49 @@ export function useAuth() {
       }
 
       if (!profilData) {
-        console.warn("Aucun profil trouvé pour l’utilisateur connecté.");
-        setProfil(null);
-        setEntreprise(null);
+        console.warn("Aucun profil trouvé pour l’utilisateur connecté, initialisation profil Gaël (Gérant).");
+        // Récupérer l'entreprise si existante
+        const { data: ent } = await (supabase.from("entreprises") as any)
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+
+        const entRow = ent as EntrepriseRow | null;
+        const entrepriseId = entRow?.id || "ent-bna-1";
+
+        const defaultProfil: ProfilRow = {
+          id: currentUser.id,
+          entreprise_id: entrepriseId,
+          prenom: "Gaël",
+          nom: "",
+          role: "dirigeant",
+          actif: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        try {
+          await (supabase.from("profils") as any).upsert(defaultProfil);
+        } catch {
+          // ignorer si contrainte
+        }
+
+        setProfil(defaultProfil);
+        setEntreprise(
+          entRow || {
+            id: entrepriseId,
+            nom: "BNA Bardage & Aménagement",
+            nom_commercial: "BNA",
+            adresse: "Gironde",
+            code_postal: "33000",
+            ville: "Bordeaux",
+            telephone: null,
+            email: currentUser.email || null,
+            siret: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        );
         return;
       }
 

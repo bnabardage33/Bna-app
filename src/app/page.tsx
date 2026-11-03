@@ -98,7 +98,10 @@ export default function HomePage() {
     chantiers[0] ||
     null;
 
-  const displayName = profil?.prenom || (user?.email ? user.email.split("@")[0] : "");
+  const displayName =
+    profil?.prenom ||
+    (user?.email?.toLowerCase().includes("bna") ? "Gaël" : "") ||
+    "Gaël";
 
   // Écran d'attente lors de la vérification de session
   if (authLoading) {
