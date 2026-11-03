@@ -14,6 +14,7 @@ import { CalepinageModal } from "@/components/calepinage/CalepinageModal";
 import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
 import { AssistantScreen } from "@/components/screens/AssistantScreen";
+import { DevisFinanceScreen } from "@/components/screens/DevisFinanceScreen";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
 import { ChantierCard } from "@/components/chantiers/ChantierCard";
@@ -328,17 +329,16 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ÉCRAN DEVIS */}
+        {/* ÉCRAN DEVIS, FACTURES & RENTABILITÉ */}
         {currentTab === "devis" && (
-          <div className="py-6 animate-in fade-in duration-150">
-            <div className="flex items-center gap-2 mb-4">
-              <FileText className="w-6 h-6 text-bna-copper" />
-              <h1 className="font-display font-bold text-2xl">Devis & Chiffrage</h1>
-            </div>
-            <div className="bg-white border border-bna-border rounded-2xl p-5 text-sm text-bna-muted">
-              Gestion des propositions commerciales et états d’avancement.
-            </div>
-          </div>
+          <DevisFinanceScreen
+            chantiers={chantiers}
+            onOpenCalepinage={() => {
+              setCalepinageSourceVersion(null);
+              setIsCalepinageOpen(true);
+            }}
+            onOpenAssistant={() => setCurrentTab("assistant")}
+          />
         )}
 
         {/* ÉCRAN ASSISTANT IA CENTRAL */}
@@ -357,6 +357,7 @@ export default function HomePage() {
               setCalepinageSourceVersion(null);
               setIsCalepinageOpen(true);
             }}
+            onOpenDevis={() => setCurrentTab("devis")}
             onChantierUpdated={refreshChantiers}
           />
         )}

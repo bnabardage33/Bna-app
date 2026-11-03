@@ -39,6 +39,13 @@ import {
   type AssistantAction,
   type AssistantContext,
 } from "@/lib/services/bnaAssistantService";
+import {
+  getDevisList,
+  getFacturesList,
+  creerNouveauDevis,
+  type DevisItem,
+  type FactureItem,
+} from "@/lib/services/devisFinanceService";
 
 interface AssistantScreenProps {
   userName?: string;
@@ -48,6 +55,7 @@ interface AssistantScreenProps {
   onSelectChantier?: (id: string) => void;
   onOpenCockpit?: (id: string) => void;
   onOpenCalepinage?: () => void;
+  onOpenDevis?: () => void;
   onChantierUpdated?: () => void;
 }
 
@@ -57,6 +65,10 @@ const QUICK_PROMPTS = [
   {
     label: "📋 Briefing du jour",
     prompt: "Fais-moi la synthèse des chantiers actifs, du planning et des alertes météo du jour.",
+  },
+  {
+    label: "💶 Trésorerie & Marges",
+    prompt: "Quel est mon bilan financier : chiffre d'affaires signé, marge brute, reste à facturer et factures en retard ?",
   },
   {
     label: "📅 Planifier RDV demain 9h30",
@@ -71,8 +83,8 @@ const QUICK_PROMPTS = [
     prompt: "Rappelle-moi les règles DTU 51.4 (terrasse) et DTU 41.2 (bardage bois) sur l'entraxe et la ventilation.",
   },
   {
-    label: "💰 Chiffrage Terrasse 40 m²",
-    prompt: "Donne-moi une estimation de chiffrage HT pour une terrasse de 40 m².",
+    label: "💰 Créer Devis Terrasse 40 m²",
+    prompt: "Crée un devis pour Terrasse Martin de 40 m².",
   },
   {
     label: "📦 État des commandes",
@@ -88,11 +100,14 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
   onSelectChantier,
   onOpenCockpit,
   onOpenCalepinage,
+  onOpenDevis,
   onChantierUpdated,
 }) => {
   const supabase = createClient();
   const [rdvs, setRdvs] = useState<RendezVous[]>([]);
   const [commandes, setCommandes] = useState<CommandeAvecFournisseur[]>([]);
+  const [devis, setDevis] = useState<DevisItem[]>([]);
+  const [factures, setFactures] = useState<FactureItem[]>([]);
   const [selectedContextChantierId, setSelectedContextChantierId] = useState<string>(
     activeChantierId || "tous"
   );
@@ -106,9 +121,11 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // Chargement du contexte complet (RDVs + Commandes fournisseurs)
+  // Chargement du contexte complet (RDVs + Commandes fournisseurs + Devis & Factures)
   const loadOperationalContext = async () => {
     try {
+      setDevis(getDevisList());
+      setFactures(getFacturesList());
       const [loadedRdvs, loadedCmds] = await Promise.all([
         getRendezVous(supabase),
         getAllCommandes(supabase),
@@ -177,6 +194,8 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
     chantiers,
     rdvs,
     commandes,
+    devis,
+    factures,
   });
 
   // Envoi d'un message à l'Assistant IA
@@ -285,6 +304,50 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
         if (action.payload.chantierId && onOpenCockpit) {
           onOpenCockpit(action.payload.chantierId);
         }
+      } else if (action.type === "open_devis") {
+        onOpenDevis?.();
+      } else if (action.type === "create_devis") {
+        const qte = action.payload.devisQuantite || 35;
+        const unite = action.payload.devisUnite || "m²";
+        const puFourniture = action.payload.devisPuFournitureHt || 95;
+        const puPose = action.payload.devisPuPoseHt || 72;
+        const metier = action.payload.metier || "terrasse";
+
+        creerNouveauDevis({
+          chantier_id: action.payload.chantierId,
+          chantier_nom: action.payload.chantierNom || "Projet BNA",
+          client_nom: action.payload.chantierNom
+            ? `Client ${action.payload.chantierNom}`
+            : "Nouveau Client BNA",
+          ville: "Gironde",
+          metier,
+          objet: action.payload.devisObjet || `Devis ${metier.toUpperCase()} BNA`,
+          statut: "envoye",
+          tva_pct: 10,
+          acompte_pct: 30,
+          retenue_garantie_pct: 5,
+          lignes: [
+            {
+              id: `lig-ia-mat-${Date.now()}`,
+              designation: `Fourniture ${metier.toUpperCase()} & accessoires DTU`,
+              qte,
+              unite,
+              pu_ht: puFourniture,
+              pu_revient: Math.round(puFourniture * 0.62),
+              type_cout: "matiere",
+            },
+            {
+              id: `lig-ia-mo-${Date.now() + 1}`,
+              designation: `Main d'œuvre pose complète (${metier.toUpperCase()})`,
+              qte,
+              unite,
+              pu_ht: puPose,
+              pu_revient: Math.round(puPose * 0.54),
+              type_cout: "main_oeuvre",
+            },
+          ],
+        });
+        await loadOperationalContext();
       }
 
       // Marquer l'action comme exécutée dans le fil de discussion

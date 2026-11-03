@@ -11,13 +11,21 @@
 import type { Chantier } from "@/types/metier";
 import type { RendezVous } from "./rendezVousService";
 import type { CommandeAvecFournisseur } from "./commandesFournisseursService";
+import {
+  calculerBilanFinancierGlobal,
+  fmtEuro,
+  type DevisItem,
+  type FactureItem,
+} from "./devisFinanceService.ts";
 
 export type AssistantActionType =
   | "create_rdv"
   | "update_avancement"
   | "open_calepinage"
   | "open_cockpit"
-  | "open_planning";
+  | "open_planning"
+  | "create_devis"
+  | "open_devis";
 
 export interface AssistantAction {
   id: string;
@@ -37,8 +45,13 @@ export interface AssistantAction {
     rdvLieu?: string;
     // Pour update_avancement
     nouvelAvancement?: number;
-    // Pour open_calepinage
+    // Pour open_calepinage / create_devis
     metier?: "terrasse" | "facade" | "cloture";
+    devisQuantite?: number;
+    devisUnite?: string;
+    devisPuFournitureHt?: number;
+    devisPuPoseHt?: number;
+    devisObjet?: string;
   };
 }
 
@@ -59,6 +72,8 @@ export interface AssistantContext {
   chantiers: Chantier[];
   rdvs: RendezVous[];
   commandes: CommandeAvecFournisseur[];
+  devis?: DevisItem[];
+  factures?: FactureItem[];
 }
 
 /**
@@ -200,6 +215,9 @@ export function buildSystemPromptContext(ctx: AssistantContext): string {
           )
           .join("\n");
 
+  const bilan = calculerBilanFinancierGlobal(ctx.devis || [], ctx.factures || []);
+  const financeText = `CA Signé HT: ${fmtEuro(bilan.ca_signe_ht)} | Pipeline en attente: ${fmtEuro(bilan.pipeline_en_attente_ht)} | Encaissé TTC: ${fmtEuro(bilan.encaisse_ttc)} | Reste à facturer HT: ${fmtEuro(bilan.reste_a_facturer_ht)} | Marge brute moyenne: ${bilan.taux_marge_moyen_pct}% (${fmtEuro(bilan.marge_globale_signee_ht)}) | Factures en retard: ${bilan.nb_factures_retard} (${fmtEuro(bilan.en_retard_ttc)})`;
+
   return `Tu es l'Assistant IA Central de BNA (Bardage & Aménagement Extérieur en Gironde).
 Tu t'adresses directement à ${ctx.userName} (${ctx.userRole} de BNA).
 Date du jour : ${ctx.currentDateIso}.
@@ -213,10 +231,13 @@ ${rdvsText}
 COMMANDES FOURNISSEURS (${ctx.commandes.length}) :
 ${commandesText}
 
+TRÉSORERIE, DEVIS & FACTURES :
+${financeText}
+
 RÈGLES MÉTIERS :
 - Sois concis, précis, professionnel et orienté terrain.
 - Appuie toujours tes conseils techniques sur les normes NF DTU 51.4 (Terrasse), NF DTU 41.2 (Bardage bois), NF DTU 45.4 (Bardage HPL) et NF P98-405 (Clôture).
-- Si Gaël demande de planifier un RDV ou modifier un avancement, confirme les détails clairement.`;
+- Si Gaël demande de planifier un RDV, modifier un avancement ou créer un devis, confirme les détails clairement.`;
 }
 
 /**
@@ -428,6 +449,50 @@ export function detectAssistantActions(
     });
   }
 
+  // 4. Intention : Créer automatiquement un Devis BNA chiffré
+  if (
+    (lower.includes("crée un devis") ||
+      lower.includes("cree un devis") ||
+      lower.includes("créer un devis") ||
+      lower.includes("creer un devis") ||
+      lower.includes("génère un devis") ||
+      lower.includes("genere un devis") ||
+      lower.includes("nouveau devis")) &&
+    !lower.includes("combien")
+  ) {
+    const surfaceMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:m2|m²|ml)/i);
+    const qte = surfaceMatch ? parseFloat(surfaceMatch[1].replace(",", ".")) : 35;
+    const isBardage = lower.includes("bardage") || lower.includes("façade") || lower.includes("hpl");
+    const isCloture = lower.includes("clôture") || lower.includes("cloture");
+    const metier: "terrasse" | "facade" | "cloture" = isBardage
+      ? "facade"
+      : isCloture
+      ? "cloture"
+      : "terrasse";
+    const unite = isCloture ? "ml" : "m²";
+    const puFourniture = isBardage ? 115 : isCloture ? 75 : 95;
+    const puPose = isBardage ? 85 : isCloture ? 55 : 72;
+
+    actions.push({
+      id: `act-dev-${Date.now()}`,
+      type: "create_devis",
+      title: `Créer Devis ${metier.toUpperCase()} (${qte} ${unite})`,
+      description: `${
+        targetChantier ? `Chantier ${targetChantier.nom}` : "Nouveau client"
+      } · Total estimé : ${fmtEuro(qte * (puFourniture + puPose))} HT`,
+      payload: {
+        chantierId: targetChantier?.id,
+        chantierNom: targetChantier?.nom || "Projet BNA",
+        metier,
+        devisQuantite: qte,
+        devisUnite: unite,
+        devisPuFournitureHt: puFourniture,
+        devisPuPoseHt: puPose,
+        devisObjet: `Travaux ${metier.toUpperCase()} (${qte} ${unite}) conforme DTU`,
+      },
+    });
+  }
+
   return actions;
 }
 
@@ -594,15 +659,75 @@ export function generateLocalAssistantResponse(
     return { content: lines.join("\n").trim(), actions, tags };
   }
 
+  // CAS 3.5 : Trésorerie, Chiffre d'affaires, Factures, Relances & Marges
+  if (
+    lower.includes("trésorerie") ||
+    lower.includes("tresorerie") ||
+    lower.includes("chiffre d'affaires") ||
+    lower.includes("facture") ||
+    lower.includes("marge") ||
+    lower.includes("rentabilité") ||
+    lower.includes("rentabilite") ||
+    lower.includes("relance") ||
+    lower.includes("impayé") ||
+    lower.includes("impaye") ||
+    lower.includes("retenue de garantie") ||
+    lower.includes("reste à facturer")
+  ) {
+    tags.push("Pilotage Financier", "Trésorerie & Marges");
+    const bilan = calculerBilanFinancierGlobal(ctx.devis || [], ctx.factures || []);
+    const facturesRetard = (ctx.factures || []).filter((f) => f.statut === "en_retard");
+
+    const lines: string[] = [
+      `💶 **Bilan Financier & Trésorerie BNA en direct :**`,
+      "",
+      `• **Chiffre d'Affaires Signé HT** : **${fmtEuro(bilan.ca_signe_ht)}** (${fmtEuro(bilan.ca_signe_ttc)} TTC)`,
+      `• **Pipeline Devis en attente** : **${fmtEuro(bilan.pipeline_en_attente_ht)} HT**`,
+      `• **Marge Brute Signée** : **${fmtEuro(bilan.marge_globale_signee_ht)} HT** (Taux moyen : **${bilan.taux_marge_moyen_pct}%**)`,
+      "",
+      `🏦 **Facturation & Encaissements :**`,
+      `• **Déjà encaissé TTC** : **${fmtEuro(bilan.encaisse_ttc)}**`,
+      `• **En attente d'encaissement TTC** : **${fmtEuro(bilan.en_attente_encaissement_ttc)}**`,
+      `• **Reste à facturer sur chantiers signés** : **${fmtEuro(bilan.reste_a_facturer_ht)} HT**`,
+      `• **Retenues de garantie 5% (Loi 71-584)** : **${fmtEuro(bilan.retenues_garantie_cumulees_ttc)} TTC**`,
+    ];
+
+    if (facturesRetard.length > 0) {
+      lines.push("");
+      lines.push(`⚠️ **Factures en retard à relancer (${facturesRetard.length}) :**`);
+      facturesRetard.forEach((f) => {
+        lines.push(
+          `• **${f.numero}** — ${f.client_nom} (${f.chantier_nom}) : **${fmtEuro(f.net_a_payer_ttc)} TTC** (Échéance dépassée : ${f.date_echeance})`
+        );
+      });
+    }
+
+    return {
+      content: lines.join("\n"),
+      actions: [
+        ...actions,
+        {
+          id: `act-open-devis-${Date.now()}`,
+          type: "open_devis",
+          title: "Ouvrir l'espace Devis, Factures & Marges",
+          description: "Consulter les devis, émettre une situation d'avancement ou relancer une facture",
+          payload: {},
+        },
+      ],
+      tags,
+    };
+  }
+
   // CAS 4 : Simulation de Chiffrage / Devis rapide
   if (
-    lower.includes("chiffrage") ||
-    lower.includes("devis") ||
-    lower.includes("prix") ||
-    lower.includes("tarif") ||
-    lower.includes("combien") ||
-    lower.includes("estimer") ||
-    lower.includes("estimation")
+    !actions.some((a) => a.type === "create_devis") &&
+    (lower.includes("chiffrage") ||
+      lower.includes("devis") ||
+      lower.includes("prix") ||
+      lower.includes("tarif") ||
+      lower.includes("combien") ||
+      lower.includes("estimer") ||
+      lower.includes("estimation"))
   ) {
     tags.push("Pré-Chiffrage HT", "Étude & Devis");
     const surfaceMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(?:m2|m²|ml)/i);
@@ -724,6 +849,17 @@ export function generateLocalAssistantResponse(
     if (first.type === "open_calepinage") {
       return {
         content: `Voici l'accès direct au calculateur de calepinage pour dimensionner votre ouvrage selon les règles DTU :`,
+        actions,
+        tags,
+      };
+    }
+    if (first.type === "create_devis") {
+      const qte = first.payload.devisQuantite || 35;
+      const unite = first.payload.devisUnite || "m²";
+      const totalHt =
+        qte * ((first.payload.devisPuFournitureHt || 95) + (first.payload.devisPuPoseHt || 72));
+      return {
+        content: `J'ai préparé le devis **${first.payload.devisObjet}** pour **${first.payload.chantierNom}** (**${fmtEuro(totalHt)} HT** incluant fourniture et main d'œuvre de pose).\n\nCliquez ci-dessous pour créer et enregistrer ce devis dans votre espace Devis & Factures :`,
         actions,
         tags,
       };

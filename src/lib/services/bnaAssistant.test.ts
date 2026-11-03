@@ -6,6 +6,13 @@ import {
   generateLocalAssistantResponse,
   type AssistantContext,
 } from "./bnaAssistantService.ts";
+import {
+  calculerDevis,
+  calculerMontantsFacture,
+  calculerBilanFinancierGlobal,
+  getDevisList,
+  getFacturesList,
+} from "./devisFinanceService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -149,4 +156,56 @@ assert(resMeteo.content.includes("POSE FAVORABLE") && resMeteo.content.includes(
 const resChiffrage = generateLocalAssistantResponse("Donne un chiffrage pour une terrasse de 50 m²", mockContext);
 assert(resChiffrage.content.includes("50 m²") && resChiffrage.content.includes("Cumaru"), "4.F: Chiffrage calcule les tarifs pour 50 m²");
 
-console.log(`\n🎉 TOUS LES TESTS DE L'ASSISTANT IA BNA SONT VALIDÉS (${passed} assertions) !`);
+// 5. Test Moteur Financier (Devis, Marges, Retenue de Garantie Loi 71-584 & Factures)
+const calcDev = calculerDevis(
+  [
+    {
+      id: "l1",
+      designation: "Fourniture Lames",
+      qte: 40,
+      unite: "m²",
+      pu_ht: 100,
+      pu_revient: 60,
+      type_cout: "matiere",
+    },
+    {
+      id: "l2",
+      designation: "Pose",
+      qte: 40,
+      unite: "m²",
+      pu_ht: 75,
+      pu_revient: 40,
+      type_cout: "main_oeuvre",
+    },
+  ],
+  10,
+  30
+);
+assert(calcDev.total_ht === 7000, "5.A: Total HT devis = 7000 €");
+assert(calcDev.total_ttc === 7700, "5.B: Total TTC devis (TVA 10%) = 7700 €");
+assert(calcDev.marge_ht === 3000, "5.C: Marge brute HT = 3000 €");
+assert(calcDev.acompte_ttc === 2310, "5.D: Acompte 30% TTC = 2310 €");
+
+const calcFac = calculerMontantsFacture(5000, 10, 5);
+assert(calcFac.montant_ttc === 5500, "5.E: Facture TTC = 5500 €");
+assert(calcFac.montant_retenue_ttc === 275, "5.F: Retenue de garantie 5% (Loi 71-584) = 275 € TTC");
+assert(calcFac.net_a_payer_ttc === 5225, "5.G: Net à payer TTC après retenue 5% = 5225 €");
+
+// 6. Test Intégration Finances <-> Assistant IA Central
+mockContext.devis = getDevisList();
+mockContext.factures = getFacturesList();
+const bilan = calculerBilanFinancierGlobal(mockContext.devis, mockContext.factures);
+assert(bilan.ca_signe_ht > 20000, "6.A: Bilan financier consolide le CA signé HT");
+assert(bilan.nb_factures_retard === 1, "6.B: Détection automatique de la facture en retard (Clôture Bernard)");
+
+const resTresorerie = generateLocalAssistantResponse(
+  "Quel est mon chiffre d'affaires, ma trésorerie et mes factures en retard ?",
+  mockContext
+);
+assert(resTresorerie.content.includes("Bilan Financier & Trésorerie BNA"), "6.C: Assistant IA répond avec le bilan financier complet");
+assert(resTresorerie.content.includes("FAC-2026-0086"), "6.D: Assistant IA signale la facture en retard FAC-2026-0086");
+
+const devActions = detectAssistantActions("Crée un devis pour Terrasse Martin de 45 m²", mockContext);
+assert(devActions.some((a) => a.type === "create_devis" && a.payload.devisQuantite === 45), "6.E: Action Card create_devis (45 m²) générée par l'IA");
+
+console.log(`\n🎉 TOUS LES TESTS DE L'ASSISTANT IA & FINANCES BNA SONT VALIDÉS (${passed} assertions) !`);
