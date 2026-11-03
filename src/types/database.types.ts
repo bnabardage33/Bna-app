@@ -178,6 +178,23 @@ export interface LigneCommandeFournisseurRow {
   created_at: string;
 }
 
+export interface PhotoChantierRow {
+  id: string;
+  entreprise_id: string;
+  chantier_id: string;
+  type: "constat" | "pointage";
+  titre: string;
+  description: string | null;
+  localisation: string | null;
+  storage_path: string;
+  url: string;
+  date: string;
+  heure: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BesoinMateriauRow {
   id: string;
   entreprise_id: string;
@@ -291,6 +308,15 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Omit<LigneCommandeFournisseurRow, "id">>;
+      };
+      photos_chantiers: {
+        Row: PhotoChantierRow;
+        Insert: Omit<PhotoChantierRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<PhotoChantierRow, "id">>;
       };
     };
   };

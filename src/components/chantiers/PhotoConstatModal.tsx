@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Camera,
   Image as ImageIcon,
@@ -18,24 +18,20 @@ import {
   Maximize2,
   Calendar,
   ChevronDown,
+  Loader2,
+  Cloud,
 } from "lucide-react";
 import type { Chantier } from "@/types/metier";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getPhotosByChantier,
+  uploadPhotoChantier,
+  deletePhotoChantier,
+  type PhotoChantier,
+  type PhotoType,
+} from "@/lib/services/photoService";
 
-export type PhotoType = "constat" | "pointage";
-
-export interface PhotoChantier {
-  id: string;
-  chantierId: string;
-  type: PhotoType;
-  titre: string;
-  description?: string;
-  localisation?: string;
-  date: string; // YYYY-MM-DD
-  heure: string; // HH:mm
-  url: string; // Data URL base64 ou URL d'image
-  thumbnailGradient?: string;
-  isCustom?: boolean;
-}
+export type { PhotoChantier, PhotoType };
 
 interface PhotoConstatModalProps {
   isOpen: boolean;
@@ -47,7 +43,7 @@ interface PhotoConstatModalProps {
 }
 
 // ---------------------------------------------------------------------------
-// Photos initiales réalistes selon le métier du chantier
+// Photos initiales réalistes de démonstration selon le métier
 // ---------------------------------------------------------------------------
 function getSeedPhotosForChantier(chantier: Chantier): PhotoChantier[] {
   const isFacade = chantier.metier === "facade";
@@ -172,6 +168,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
   onSelectChantier,
   onPhotoAdded,
 }) => {
+  const supabase = createClient();
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -192,13 +189,15 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
     return chantier;
   }, [chantiers, activeChantierId, chantier]);
 
-  // État des photos (chargé depuis localStorage ou seed pour currentChantier)
-  const storageKey = `bna_photos_chantier_${currentChantier.id}`;
+  // État des photos
   const [photos, setPhotos] = useState<PhotoChantier[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [filterType, setFilterType] = useState<"tous" | PhotoType>("tous");
 
   // Nouvelle photo en cours de saisie / qualification
   const [pendingImage, setPendingImage] = useState<{
+    file?: File;
     url: string;
     type: PhotoType;
     titre: string;
@@ -209,37 +208,30 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
   // Visionneuse Lightbox plein écran
   const [activePhoto, setActivePhoto] = useState<PhotoChantier | null>(null);
 
-  // Chargement des photos
-  useEffect(() => {
-    if (!isOpen) return;
-
+  // Chargement des photos (Supabase Storage & Table + Fallback local)
+  const loadPhotos = useCallback(async (cId: string) => {
+    setIsLoading(true);
     try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as PhotoChantier[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setPhotos(parsed);
-          return;
-        }
+      const results = await getPhotosByChantier(supabase, cId);
+      if (results.length > 0) {
+        setPhotos(results);
+      } else {
+        const seed = getSeedPhotosForChantier(currentChantier);
+        setPhotos(seed);
       }
     } catch {
-      // Fallback
+      const seed = getSeedPhotosForChantier(currentChantier);
+      setPhotos(seed);
+    } finally {
+      setIsLoading(false);
     }
+  }, [supabase, currentChantier]);
 
-    // Données initiales
-    const seed = getSeedPhotosForChantier(currentChantier);
-    setPhotos(seed);
-  }, [isOpen, currentChantier, storageKey]);
-
-  // Sauvegarde dans localStorage lors d'un ajout
-  const savePhotos = (updated: PhotoChantier[]) => {
-    setPhotos(updated);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch {
-      // Ignore quota storage
+  useEffect(() => {
+    if (isOpen) {
+      loadPhotos(currentChantier.id);
     }
-  };
+  }, [isOpen, currentChantier.id, loadPhotos]);
 
   // Traitement d'un fichier sélectionné (appareil photo ou galerie)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, defaultType: PhotoType = "constat") => {
@@ -251,6 +243,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
         setPendingImage({
+          file,
           url: dataUrl,
           type: defaultType,
           titre: "",
@@ -261,53 +254,52 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
     };
     reader.readAsDataURL(file);
 
-    // Reset de l'input pour permettre de reprendre la même photo si besoin
+    // Reset de l'input
     e.target.value = "";
   };
 
-  // Enregistrement de la photo qualifiée
-  const handleSavePendingPhoto = (e: React.FormEvent) => {
+  // Enregistrement de la photo qualifiée (Upload vers Supabase Storage)
+  const handleSavePendingPhoto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pendingImage) return;
+    if (!pendingImage || isUploading) return;
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const dateStr = `${y}-${m}-${d}`;
+    setIsUploading(true);
+    try {
+      const savedPhoto = await uploadPhotoChantier(supabase, {
+        chantierId: currentChantier.id,
+        file: pendingImage.file,
+        dataUrl: pendingImage.url,
+        type: pendingImage.type,
+        titre: pendingImage.titre,
+        description: pendingImage.description,
+        localisation: pendingImage.localisation,
+      });
 
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const heureStr = `${hh}:${mm}`;
+      setPhotos((prev) => [savedPhoto, ...prev.filter((p) => p.id !== savedPhoto.id)]);
+      setPendingImage(null);
 
-    const newPhoto: PhotoChantier = {
-      id: `photo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      chantierId: currentChantier.id,
-      type: pendingImage.type,
-      titre: pendingImage.titre.trim() || (pendingImage.type === "constat" ? "Constat terrain" : "Pointage avancement"),
-      description: pendingImage.description.trim() || undefined,
-      localisation: pendingImage.localisation.trim() || undefined,
-      date: dateStr,
-      heure: heureStr,
-      url: pendingImage.url,
-      isCustom: true,
-    };
-
-    const updated = [newPhoto, ...photos];
-    savePhotos(updated);
-    setPendingImage(null);
-    if (onPhotoAdded) {
-      onPhotoAdded();
+      if (onPhotoAdded) {
+        onPhotoAdded();
+      }
+    } catch (err) {
+      console.error("[PhotoConstatModal] Erreur enregistrement :", err);
+      alert("Erreur lors de l'enregistrement de la photo.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  // Suppression d'une photo personnalisée
-  const handleDeletePhoto = (photoId: string) => {
-    if (confirm("Supprimer ce cliché de la galerie du chantier ?")) {
-      const updated = photos.filter((p) => p.id !== photoId);
-      savePhotos(updated);
-      if (activePhoto?.id === photoId) {
-        setActivePhoto(null);
+  // Suppression d'une photo (Supabase Storage + Table + Cache)
+  const handleDeletePhoto = async (photo: PhotoChantier) => {
+    if (confirm("Supprimer définitivement ce cliché du chantier et du cloud Supabase ?")) {
+      try {
+        await deletePhotoChantier(supabase, photo);
+        setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+        if (activePhoto?.id === photo.id) {
+          setActivePhoto(null);
+        }
+      } catch (err) {
+        console.error("Erreur suppression :", err);
       }
     }
   };
@@ -335,9 +327,14 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
               <Camera className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-base font-bold leading-tight truncate">
-                Photos : Constat ou Pointage
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-bold leading-tight truncate">
+                  Photos : Constat ou Pointage
+                </h2>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-700/60 px-1.5 py-0.2 rounded-full">
+                  <Cloud className="w-2.5 h-2.5" /> Supabase Storage
+                </span>
+              </div>
               {chantiers && chantiers.length > 1 ? (
                 <div className="mt-1 flex items-center gap-1.5">
                   <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold shrink-0">
@@ -443,8 +440,9 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
                 </div>
                 <button
                   type="button"
+                  disabled={isUploading}
                   onClick={() => setPendingImage(null)}
-                  className="text-xs font-semibold text-neutral-500 hover:text-neutral-800"
+                  className="text-xs font-semibold text-neutral-500 hover:text-neutral-800 disabled:opacity-50"
                 >
                   Annuler
                 </button>
@@ -583,16 +581,25 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
+                  disabled={isUploading}
                   onClick={() => setPendingImage(null)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#D97732] hover:bg-[#c26526] text-white shadow-xs transition-all active:scale-95"
+                  disabled={isUploading}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#D97732] hover:bg-[#c26526] text-white shadow-xs transition-all active:scale-95 disabled:opacity-60 inline-flex items-center gap-1.5"
                 >
-                  Enregistrer dans la galerie
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Envoi cloud...</span>
+                    </>
+                  ) : (
+                    <span>Enregistrer dans la galerie</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -608,6 +615,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
                 <span className="text-xs font-bold uppercase tracking-wider text-bna-muted">
                   Galerie du chantier ({photos.length})
                 </span>
+                {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-bna-muted" />}
               </div>
 
               {/* Filtres Constat / Pointage */}
@@ -706,6 +714,16 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
                           {isConstat ? "Constat" : "Pointage"}
                         </span>
 
+                        {/* Indicateur Cloud / Local */}
+                        {photo.storagePath && (
+                          <span
+                            className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-emerald-400 backdrop-blur-xs"
+                            title="Synchronisé sur Supabase Storage"
+                          >
+                            <Cloud className="w-2.5 h-2.5" />
+                          </span>
+                        )}
+
                         {/* Horodatage discret */}
                         <span className="absolute bottom-2 right-2 text-[9px] font-bold bg-black/70 text-white px-1.5 py-0.5 rounded-md flex items-center gap-1 backdrop-blur-xs">
                           <Clock className="w-2.5 h-2.5 text-orange-300" />
@@ -773,6 +791,11 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
                 <span className="text-xs font-semibold text-neutral-300">
                   {activePhoto.date} à {activePhoto.heure}
                 </span>
+                {activePhoto.storagePath && (
+                  <span className="text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-700/60 px-1.5 py-0.2 rounded-full inline-flex items-center gap-1">
+                    <Cloud className="w-2.5 h-2.5" /> Cloud
+                  </span>
+                )}
               </div>
 
               <button
@@ -832,7 +855,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
                 {activePhoto.isCustom ? (
                   <button
                     type="button"
-                    onClick={() => handleDeletePhoto(activePhoto.id)}
+                    onClick={() => handleDeletePhoto(activePhoto)}
                     className="text-xs font-semibold text-rose-600 hover:text-rose-800 inline-flex items-center gap-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
