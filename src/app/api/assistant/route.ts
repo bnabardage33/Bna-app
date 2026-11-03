@@ -5,7 +5,41 @@ import {
   type AssistantContext,
 } from "@/lib/services/bnaAssistantService";
 
-const LLM_TIMEOUT_MS = 12_000;
+const LLM_TIMEOUT_MS = 18_000;
+
+async function callMistralLlm(systemPrompt: string, userMessage: string, apiKey: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+
+  try {
+    const model = process.env.MISTRAL_MODEL || "mistral-small-latest";
+    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 1400,
+        temperature: 0.2,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.choices?.[0]?.message?.content?.trim() || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function callGroqLlm(systemPrompt: string, userMessage: string, apiKey: string): Promise<string | null> {
   const controller = new AbortController();
@@ -25,8 +59,8 @@ async function callGroqLlm(systemPrompt: string, userMessage: string, apiKey: st
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
-        max_completion_tokens: 700,
-        temperature: 0.3,
+        max_tokens: 1400,
+        temperature: 0.2,
       }),
       signal: controller.signal,
     });
@@ -61,8 +95,8 @@ async function callGeminiLlm(systemPrompt: string, userMessage: string, apiKey: 
           },
         ],
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 700,
+          temperature: 0.2,
+          maxOutputTokens: 1400,
         },
       }),
       signal: controller.signal,
@@ -82,6 +116,51 @@ async function callGeminiLlm(systemPrompt: string, userMessage: string, apiKey: 
   }
 }
 
+/**
+ * Détermine si la question nécessite le relais vers le Cloud LLM (Mistral / Gemini)
+ * ou si elle peut être traitée instantanément et à 100% en local.
+ */
+function isComplexOrConversationalQuery(message: string, localResponse: ReturnType<typeof generateLocalAssistantResponse>): boolean {
+  const lower = message.toLowerCase();
+
+  // 1. Si le moteur local est tombé sur sa réponse par défaut (aucun pattern exact trouvé)
+  if (localResponse.tags.includes("Copilote BNA")) {
+    return true;
+  }
+
+  // 2. Discussions naturelles, politesse ou questions conversationnelles
+  if (
+    lower.includes("ça va") ||
+    lower.includes("ca va") ||
+    lower.includes("comment vas-tu") ||
+    lower.includes("comment tu vas") ||
+    lower.includes("qui es-tu") ||
+    lower.includes("merci") ||
+    lower.includes("raconte") ||
+    lower.includes("avis")
+  ) {
+    return true;
+  }
+
+  // 3. Demandes d'études techniques détaillées, rédactions complexes ou calculs sur mesure
+  if (
+    message.length > 90 ||
+    lower.includes("étude technique") ||
+    lower.includes("etude technique") ||
+    lower.includes("calepinage des lames") ||
+    lower.includes("prescription") ||
+    lower.includes("rédige") ||
+    lower.includes("redige") ||
+    lower.includes("courrier") ||
+    lower.includes("pourquoi") ||
+    lower.includes("explique")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -95,29 +174,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Générer l'analyse déterministe BNA (intentions d'actions, règles DTU exactes, chiffrage)
+    // 1. Analyse locale déterministe BNA (détection des actions : RDV, avancement, calepinage, devis)
     const localResponse = generateLocalAssistantResponse(message, context);
 
-    // 2. Si une clé LLM (Gemini ou Groq) est configurée sur l'environnement et qu'aucune action directe ne suffit
-    const geminiKey =
-      process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    // 2. Vérification des clés Cloud disponibles (Priorité Mistral AI -> Cloud Français RGPD)
+    const mistralKey = process.env.MISTRAL_API_KEY;
+    const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
+    const hasAnyLlmKey = Boolean(mistralKey || geminiKey || groqKey);
 
-    let llmText: string | null = null;
-    const systemPrompt = buildSystemPromptContext(context);
+    // 3. Routage intelligent :
+    // - Si la requête est simple et parfaitement couverte en local, on répond en local (0ms, 0€, 100% privé).
+    // - Si la requête est complexe/technique/ouverte ET qu'une clé est disponible, on sollicite le Cloud LLM.
+    const needsCloudLlm = isComplexOrConversationalQuery(message, localResponse);
 
-    if (geminiKey) {
-      llmText = await callGeminiLlm(systemPrompt, message, geminiKey);
+    if (hasAnyLlmKey && needsCloudLlm) {
+      const systemPrompt = buildSystemPromptContext(context);
+      let llmText: string | null = null;
+      let providerName = "";
+
+      if (mistralKey) {
+        llmText = await callMistralLlm(systemPrompt, message, mistralKey);
+        if (llmText) providerName = "Mistral AI (Cloud Français RGPD)";
+      }
+      if (!llmText && geminiKey) {
+        llmText = await callGeminiLlm(systemPrompt, message, geminiKey);
+        if (llmText) providerName = "Gemini Cloud";
+      }
+      if (!llmText && groqKey) {
+        llmText = await callGroqLlm(systemPrompt, message, groqKey);
+        if (llmText) providerName = "Groq Llama 3.3";
+      }
+
+      if (llmText) {
+        return NextResponse.json({
+          content: llmText,
+          actions: localResponse.actions,
+          tags: [providerName, "Étude Approfondie"],
+          source: "cloud_llm",
+        });
+      }
     }
-    if (!llmText && groqKey) {
-      llmText = await callGroqLlm(systemPrompt, message, groqKey);
-    }
 
+    // 4. Réponse instantanée par le Moteur Local BNA (0 données transmises à l'extérieur)
     return NextResponse.json({
-      content: llmText || localResponse.content,
+      content: localResponse.content,
       actions: localResponse.actions,
-      tags: localResponse.tags,
-      source: llmText ? "cloud_llm" : "bna_expert_engine",
+      tags: ["🟢 Moteur Local BNA", ...(localResponse.tags || [])],
+      source: "bna_expert_engine",
     });
   } catch (err) {
     console.error("Erreur API Assistant BNA :", err);
