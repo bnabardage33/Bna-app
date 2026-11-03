@@ -120,7 +120,7 @@ Ce document récapitule l'architecture et l'ensemble des fonctionnalités déplo
 
 ---
 
-## Architecture Hybride & Confidentialité des Données (Local vs Mistral AI)
+## Architecture Hybride & Confidentialité des Données (Local vs Groq Cloud)
 
 Afin de concilier **confidentialité totale des données chantiers**, **zéro coût** et **puissance de calcul sur les cas complexes**, l'API `/api/assistant` applique une règle de **routage hybride intelligent** :
 
@@ -128,18 +128,20 @@ Afin de concilier **confidentialité totale des données chantiers**, **zéro co
 |---|---|---|---|---|
 | **Gestion quotidienne** (RDV, % avancement, météo chantier, liste PV/SAV, trésorerie) | **🟢 Moteur Local BNA** | **Aucun (0 octet)** | Instantané (1 ms) | Aucune |
 | **Règles DTU standard** (entraxe 51.4, fixations 41.2, garde au sol) | **🟢 Moteur Local BNA** | **Aucun (0 octet)** | Instantané (1 ms) | Aucune |
-| **Étude technique complexe** (ex: terrasse composite 6×4,5m avec découpes, entraxes fabricants, calcul de pertes) | **🚀 Mistral AI (France)** | Uniquement la question technique | ~2 secondes | `MISTRAL_API_KEY` |
-| **Conversation libre & Politesse** ("ça va ?", "raconte-moi...") | **🚀 Mistral AI (France)** | Uniquement le message | ~1 seconde | `MISTRAL_API_KEY` |
+| **Étude technique complexe** (ex: terrasse composite 6×4,5m avec découpes, entraxes fabricants, calcul de pertes) | **🚀 Groq Cloud (GPT-OSS / Qwen)** | Uniquement la question technique | ~1 seconde | `GROQ_API_KEY` |
+| **Conversation libre & Politesse** ("ça va ?", "raconte-moi...") | **🚀 Groq Cloud (GPT-OSS / Qwen)** | Uniquement le message | ~0,5 seconde | `GROQ_API_KEY` |
 
-### Pourquoi Mistral AI ?
-- **Souveraineté européenne & RGPD** : hébergé en Europe (France/Allemagne).
-- **Protection contractuelle stricte** : contrairement aux offres gratuites grand public américaines, l'API professionnelle de Mistral garantit qu'**aucune donnée utilisateur ni prompt n'est utilisé pour entraîner leurs modèles**.
-- **Tarif dérisoire** : le modèle `mistral-small-latest` coûte quelques centimes par mois pour un usage d'entreprise BTP.
+### Modèles supportés sur Groq (100% Gratuits) :
+L'application essaie par défaut le modèle le plus puissant et bascule automatiquement sur les suivants en cas de forte charge :
+1. **`openai/gpt-oss-120b`** (OpenAI GPT-OSS 120B — Modèle de raisonnement phare 120 milliards de paramètres, 500 tokens/sec) — **Activé par défaut**
+2. **`qwen/qwen3.8-27b`** (Qwen 3.8 27B — Modèle avancé de raisonnement Alibaba, analyse technique pointue)
+3. **`openai/gpt-oss-20b`** (OpenAI GPT-OSS 20B — Modèle ultra-rapide à 1 000 tokens/sec)
 
 ### Configuration sur Vercel :
 Dans le tableau de bord Vercel de `Bna-app` > **Settings** > **Environment Variables** :
-- **Variable** : `MISTRAL_API_KEY`
-- **Valeur** : votre clé obtenue sur [console.mistral.ai](https://console.mistral.ai)
+- **Variable** : `GROQ_API_KEY`
+- **Valeur** : votre clé obtenue gratuitement sur [console.groq.com](https://console.groq.com)
+- *(Optionnel)* **Variable** : `GROQ_MODEL` si vous souhaitez forcer un modèle spécifique (ex: `qwen/qwen3.8-27b` ou `openai/gpt-oss-20b`). Par défaut : `openai/gpt-oss-120b`.
 
 ---
 

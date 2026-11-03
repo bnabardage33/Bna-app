@@ -46,43 +46,63 @@ async function callMistralLlm(systemPrompt: string, userMessage: string, apiKey:
   }
 }
 
-async function callGroqLlm(systemPrompt: string, userMessage: string, apiKey: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+const DEFAULT_GROQ_MODELS = [
+  "openai/gpt-oss-120b",
+  "qwen/qwen3.8-27b",
+  "openai/gpt-oss-20b",
+];
 
-  try {
-    const model = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 1400,
-        temperature: 0.2,
-      }),
-      signal: controller.signal,
-    });
+async function callGroqLlm(
+  systemPrompt: string,
+  userMessage: string,
+  apiKey: string
+): Promise<{ text: string; modelUsed: string } | null> {
+  const modelsToTry = [
+    ...(process.env.GROQ_MODEL ? [process.env.GROQ_MODEL] : []),
+    ...DEFAULT_GROQ_MODELS,
+  ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.warn("Erreur Groq API:", res.status, err);
-      return null;
+  for (const model of modelsToTry) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey.trim()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+          ],
+          max_completion_tokens: 1800,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.warn(`Erreur Groq API (${model}):`, res.status, err);
+        continue;
+      }
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content?.trim();
+      if (text) {
+        return { text, modelUsed: model };
+      }
+    } catch (e) {
+      console.warn(`Exception appel Groq (${model}):`, e);
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content?.trim() || null;
-  } catch (e) {
-    console.warn("Exception appel Groq:", e);
-    return null;
-  } finally {
-    clearTimeout(timer);
   }
+
+  return null;
 }
 
 async function callGeminiLlm(systemPrompt: string, userMessage: string, apiKey: string): Promise<string | null> {
@@ -212,8 +232,11 @@ export async function POST(req: NextRequest) {
         if (llmText) providerName = "Gemini Cloud";
       }
       if (!llmText && groqKey) {
-        llmText = await callGroqLlm(systemPrompt, message, groqKey);
-        if (llmText) providerName = "Groq Llama 3.3";
+        const groqResult = await callGroqLlm(systemPrompt, message, groqKey);
+        if (groqResult) {
+          llmText = groqResult.text;
+          providerName = `Groq (${groqResult.modelUsed})`;
+        }
       }
 
       if (llmText) {
