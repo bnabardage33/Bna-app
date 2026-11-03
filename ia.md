@@ -30,7 +30,9 @@ Ce document récapitule l'architecture et l'ensemble des fonctionnalités déplo
 
 ### Fichiers clés
 - `src/lib/services/bnaAssistantService.ts` — Moteur de contexte, base réglementaire DTU, parseur de dates/heures naturelles et détecteur d'intentions (Tool Calling).
-- `src/app/api/assistant/route.ts` — Route API `/api/assistant` hybride (compatible clés `GEMINI_API_KEY` / `GROQ_API_KEY` avec bascule automatique sur le moteur expert BNA local).
+- `src/app/api/assistant/route.ts` — Moteur de Routage Hybride Intelligent :
+  - **100% Local par défaut** (0ms de latence, 0 coût d'API, 0 données transmises à l'extérieur) pour toutes les actions quotidiennes (création RDVs, avancement chantiers, météo DTU, chiffrage rapide, bilan trésorerie, suivi des réserves & SAV).
+  - **Bascule automatique sur Mistral AI** (`MISTRAL_API_KEY`, Cloud Français souverain sous RGPD avec garantie contractuelle de non-réutilisation des données) ou Gemini/Groq pour les études techniques approfondies (ex : calcul complexe de calepinage 6×4,50m avec double lambourdage, DTU 51.4 et dilatation) ou la conversation libre.
 - `src/components/screens/AssistantScreen.tsx` — Interface Cockpit conversationnelle accessible depuis l'onglet **Assistant**.
 
 ### Fonctionnalités principales
@@ -115,6 +117,29 @@ Ce document récapitule l'architecture et l'ensemble des fonctionnalités déplo
 4. **Connexion à l'Assistant IA** :
    - Bouton rapide **"🛡️ PV Réception & SAV"** dans l'Assistant IA.
    - Question : *"Quelles sont les réserves à lever sur mes PV de réception et mes interventions SAV ?"* ➔ L'IA liste chaque réserve non levée avec son échéance ainsi que les interventions SAV programmées.
+
+---
+
+## Architecture Hybride & Confidentialité des Données (Local vs Mistral AI)
+
+Afin de concilier **confidentialité totale des données chantiers**, **zéro coût** et **puissance de calcul sur les cas complexes**, l'API `/api/assistant` applique une règle de **routage hybride intelligent** :
+
+| Type de demande | Traitement | Envoi externe | Vitesse | Clé requise |
+|---|---|---|---|---|
+| **Gestion quotidienne** (RDV, % avancement, météo chantier, liste PV/SAV, trésorerie) | **🟢 Moteur Local BNA** | **Aucun (0 octet)** | Instantané (1 ms) | Aucune |
+| **Règles DTU standard** (entraxe 51.4, fixations 41.2, garde au sol) | **🟢 Moteur Local BNA** | **Aucun (0 octet)** | Instantané (1 ms) | Aucune |
+| **Étude technique complexe** (ex: terrasse composite 6×4,5m avec découpes, entraxes fabricants, calcul de pertes) | **🚀 Mistral AI (France)** | Uniquement la question technique | ~2 secondes | `MISTRAL_API_KEY` |
+| **Conversation libre & Politesse** ("ça va ?", "raconte-moi...") | **🚀 Mistral AI (France)** | Uniquement le message | ~1 seconde | `MISTRAL_API_KEY` |
+
+### Pourquoi Mistral AI ?
+- **Souveraineté européenne & RGPD** : hébergé en Europe (France/Allemagne).
+- **Protection contractuelle stricte** : contrairement aux offres gratuites grand public américaines, l'API professionnelle de Mistral garantit qu'**aucune donnée utilisateur ni prompt n'est utilisé pour entraîner leurs modèles**.
+- **Tarif dérisoire** : le modèle `mistral-small-latest` coûte quelques centimes par mois pour un usage d'entreprise BTP.
+
+### Configuration sur Vercel :
+Dans le tableau de bord Vercel de `Bna-app` > **Settings** > **Environment Variables** :
+- **Variable** : `MISTRAL_API_KEY`
+- **Valeur** : votre clé obtenue sur [console.mistral.ai](https://console.mistral.ai)
 
 ---
 
