@@ -13,6 +13,7 @@ import { QuickActionModal } from "@/components/navigation/QuickActionModal";
 import { CalepinageModal } from "@/components/calepinage/CalepinageModal";
 import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
+import { AssistantScreen } from "@/components/screens/AssistantScreen";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
 import { ChantierCard } from "@/components/chantiers/ChantierCard";
@@ -340,17 +341,24 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ÉCRAN ASSISTANT */}
+        {/* ÉCRAN ASSISTANT IA CENTRAL */}
         {currentTab === "assistant" && (
-          <div className="py-6 animate-in fade-in duration-150">
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="w-6 h-6 text-bna-copper" />
-              <h1 className="font-display font-bold text-2xl">BNA Assistant</h1>
-            </div>
-            <div className="bg-white border border-bna-border rounded-2xl p-5 text-sm text-bna-muted">
-              Assistance technique, métrés, synthèse vocale et vérification chantier.
-            </div>
-          </div>
+          <AssistantScreen
+            userName={displayName}
+            userRole={profil?.role === "dirigeant" || !profil?.role ? "Gérant" : profil.role}
+            chantiers={chantiers}
+            activeChantierId={activeChantierId}
+            onSelectChantier={(id) => setActiveChantierId(id)}
+            onOpenCockpit={(id) => {
+              setActiveChantierId(id);
+              setCurrentTab("cockpit");
+            }}
+            onOpenCalepinage={() => {
+              setCalepinageSourceVersion(null);
+              setIsCalepinageOpen(true);
+            }}
+            onChantierUpdated={refreshChantiers}
+          />
         )}
       </main>
 
