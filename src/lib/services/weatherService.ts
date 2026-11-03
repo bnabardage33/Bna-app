@@ -71,6 +71,7 @@ export interface WeatherData {
   current: LiveWeatherData;
   daily: DailyForecastDay[];
   fetchedAt: string;
+  isStale?: boolean;
 }
 
 /**
@@ -395,20 +396,84 @@ function computeSlot(hours: {
   };
 }
 
-/**
- * Récupère les données météo complètes pour une ville donnée
- */
-export async function fetchWeatherData(city: GeoCity): Promise<WeatherData> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_gusts_10m_max&timezone=Europe%2FParis`;
+// Cache météo (15 minutes de fraîcheur par coordonnées)
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+const memoryWeatherCache = new Map<string, { data: WeatherData; timestamp: number }>();
+const inFlightWeatherRequests = new Map<string, Promise<WeatherData>>();
 
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Erreur Open-Meteo (${res.status})`);
+function getWeatherCacheKey(city: GeoCity): string {
+  return `${city.latitude.toFixed(3)}_${city.longitude.toFixed(3)}`;
+}
+
+function getStoredWeatherCache(key: string): { data: WeatherData; timestamp: number } | null {
+  const inMem = memoryWeatherCache.get(key);
+  if (inMem) return inMem;
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(`bna_weather_cache_${key}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.data && parsed.timestamp) {
+          memoryWeatherCache.set(key, parsed);
+          return parsed;
+        }
+      }
+    } catch {
+      // localStorage indisponible ou plein
+    }
+  }
+  return null;
+}
+
+function setStoredWeatherCache(key: string, data: WeatherData): void {
+  const item = { data, timestamp: Date.now() };
+  memoryWeatherCache.set(key, item);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(`bna_weather_cache_${key}`, JSON.stringify(item));
+    } catch {
+      // Ignorer si localStorage plein
+    }
+  }
+}
+
+/**
+ * Exécute une requête avec tentatives multiples (retry) et délai exponentiel
+ * pour absorber les surcharges temporaires d'Open-Meteo (503 / 502 / 504 / 429)
+ */
+async function fetchWithRetry(url: string, maxRetries = 2): Promise<Response> {
+  let attempt = 0;
+  let lastError: any = null;
+
+  while (attempt <= maxRetries) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 429 || (res.status >= 500 && res.status <= 504)) {
+        if (attempt < maxRetries) {
+          const delay = (attempt + 1) * 800;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          attempt++;
+          continue;
+        }
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        const delay = (attempt + 1) * 800;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt++;
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const raw = await res.json();
+  throw lastError || new Error("Échec de connexion après plusieurs tentatives");
+}
 
-  // 1. Current data
+function parseOpenMeteoPayload(city: GeoCity, raw: any): WeatherData {
   const current: LiveWeatherData = {
     time: raw.current.time,
     temperature_2m: Math.round(raw.current.temperature_2m * 10) / 10,
@@ -419,7 +484,6 @@ export async function fetchWeatherData(city: GeoCity): Promise<WeatherData> {
     weather_code: raw.current.weather_code ?? 0,
   };
 
-  // 2. Traitement des jours
   const dates: string[] = raw.daily.time || [];
   const daily: DailyForecastDay[] = dates.map((dateStr, dIdx) => {
     const d = new Date(dateStr);
@@ -430,7 +494,6 @@ export async function fetchWeatherData(city: GeoCity): Promise<WeatherData> {
     if (isToday) dayLabel = "Aujourd'hui";
     else if (isTomorrow) dayLabel = "Demain";
 
-    // Extraire les heures du jour
     const hourlyForDay: DailyForecastDay["hourly"] = [];
     const slotMatinRaw: { temp: number; precip: number; wind: number; gust: number; code: number }[] = [];
     const slotApremRaw: { temp: number; precip: number; wind: number; gust: number; code: number }[] = [];
@@ -456,11 +519,9 @@ export async function fetchWeatherData(city: GeoCity): Promise<WeatherData> {
             weather_code: code,
           });
 
-          // Tranche Matin (06:00 -> 12:00)
           if (hour >= 6 && hour < 12) {
             slotMatinRaw.push({ temp, precip, wind, gust, code });
           }
-          // Tranche Après-midi (12:00 -> 19:00)
           if (hour >= 12 && hour < 19) {
             slotApremRaw.push({ temp, precip, wind, gust, code });
           }
@@ -489,4 +550,65 @@ export async function fetchWeatherData(city: GeoCity): Promise<WeatherData> {
     daily,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Récupère les données météo complètes pour une ville donnée.
+ * Intègre un cache mémoire + localStorage, déduplication des requêtes simultanées,
+ * retry automatique et repli de secours sur le cache en cas de 503 Open-Meteo.
+ */
+export async function fetchWeatherData(city: GeoCity, forceRefresh = false): Promise<WeatherData> {
+  const cacheKey = getWeatherCacheKey(city);
+  const now = Date.now();
+
+  // 1. Si pas de rafraîchissement forcé, vérifier la présence d'un cache frais (< 15 min)
+  if (!forceRefresh) {
+    const cached = getStoredWeatherCache(cacheKey);
+    if (cached && now - cached.timestamp < WEATHER_CACHE_TTL_MS) {
+      return {
+        ...cached.data,
+        city,
+      };
+    }
+  }
+
+  // 2. Dédupliquer les requêtes concurrentes en vol
+  if (inFlightWeatherRequests.has(cacheKey)) {
+    return inFlightWeatherRequests.get(cacheKey)!;
+  }
+
+  const fetchPromise = (async () => {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.latitude}&longitude=${city.longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_gusts_10m_max&timezone=Europe%2FParis`;
+
+    try {
+      const res = await fetchWithRetry(url, 2);
+      if (!res.ok) {
+        throw new Error(`Erreur Open-Meteo (${res.status})`);
+      }
+
+      const raw = await res.json();
+      const weatherData = parseOpenMeteoPayload(city, raw);
+      setStoredWeatherCache(cacheKey, weatherData);
+      return weatherData;
+    } catch (err: any) {
+      // 3. Repli de secours : si Open-Meteo est en panne (ex: 503) mais qu'on a déjà des données en cache
+      const staleCached = getStoredWeatherCache(cacheKey);
+      if (staleCached?.data) {
+        console.warn(
+          `Open-Meteo indisponible (${err?.message || err}). Utilisation des données en cache sauvegardées.`
+        );
+        return {
+          ...staleCached.data,
+          city,
+          isStale: true,
+        };
+      }
+      throw err;
+    } finally {
+      inFlightWeatherRequests.delete(cacheKey);
+    }
+  })();
+
+  inFlightWeatherRequests.set(cacheKey, fetchPromise);
+  return fetchPromise;
 }

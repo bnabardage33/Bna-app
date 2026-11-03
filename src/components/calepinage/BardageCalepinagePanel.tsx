@@ -591,6 +591,7 @@ export interface FacadeFormState {
   plqH: string;
   sens: "horizontal" | "vertical";
   rotation: boolean;
+  minRiveWidth?: string;
   isolant: string;
   ouvertures?: OuvertureFormState[];
 }
@@ -609,6 +610,7 @@ const DEFAULT_FACADE: FacadeFormState = {
   plqH: "1300",
   sens: "horizontal",
   rotation: false,
+  minRiveWidth: "250",
   isolant: "120",
   ouvertures: [],
 };
@@ -639,6 +641,7 @@ function evaluerFacade(f: FacadeFormState) {
           estPignon: f.pignon,
           hauteurFaiteM: f.pignon ? hf : null,
           autoriserRotation: f.rotation,
+          minRiveWidthMm: f.minRiveWidth ? num(f.minRiveWidth, 250) : undefined,
         })
       : null;
 
@@ -1260,6 +1263,8 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
               <select className={field} value={activeFacade.sens} onChange={(e) => updateActive({ sens: e.target.value as "horizontal" | "vertical" })}>
                 <option value="horizontal">Horizontal</option><option value="vertical">Vertical</option>
               </select></div>
+            <div><label className={lbl}>Rive min. (mm)</label>
+              <input className={field} inputMode="numeric" placeholder="250" value={activeFacade.minRiveWidth ?? "250"} onChange={(e) => updateActive({ minRiveWidth: e.target.value })} title="Largeur minimale d'une pièce de rive en mm (anti-micro-plaques)" /></div>
             <label className="flex items-end gap-2 text-[11px] font-semibold text-bna-anthracite pb-2">
               <input type="checkbox" checked={activeFacade.rotation} onChange={(e) => updateActive({ rotation: e.target.checked })} /> Pivot 90° autorisé (décor uni)
             </label>

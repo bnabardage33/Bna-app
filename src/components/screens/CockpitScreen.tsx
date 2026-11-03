@@ -34,6 +34,7 @@ import { MateriauxCommandesModal } from "@/components/materiaux/MateriauxCommand
 import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
 import { UpdateAvancementModal } from "@/components/chantiers/UpdateAvancementModal";
 import { ChantierPlanningModal } from "@/components/chantiers/ChantierPlanningModal";
+import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
 import {
   ChantierAvancementState,
   loadChantierAvancement,
@@ -98,6 +99,7 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
     loadChantierAvancement(chantier.id, chantier.metier, chantier.avancementGlobal, chantier)
   );
   const [isUpdateAvancementOpen, setIsUpdateAvancementOpen] = useState(false);
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
 
   const supabase = createClient();
 
@@ -354,7 +356,8 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
       {/* 6. Photos / Note rapide */}
       <div className="flex gap-2">
         <button
-          onClick={() => alert("Capture photo cockpit")}
+          type="button"
+          onClick={() => setIsPhotoModalOpen(true)}
           className="flex-1 min-h-[44px] bg-white border border-bna-border hover:bg-neutral-50 text-bna-anthracite font-medium text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]"
         >
           <Camera className="w-4 h-4 text-bna-muted" />
@@ -515,6 +518,13 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         onChantierUpdated={(updated) => {
           setChantierDates((prev) => ({ ...prev, ...updated }));
         }}
+      />
+
+      {/* Modal Photo : Constat ou Pointage & Galerie */}
+      <PhotoConstatModal
+        isOpen={isPhotoModalOpen}
+        onClose={() => setIsPhotoModalOpen(false)}
+        chantier={displayChantier}
       />
     </div>
   );

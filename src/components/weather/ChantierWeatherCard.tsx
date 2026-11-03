@@ -124,15 +124,20 @@ export const ChantierWeatherCard: React.FC<ChantierWeatherCardProps> = ({
   }, [chantier]);
 
   // 2. CHARGEMENT MÉTÉO (OPEN-METEO)
-  const loadWeather = useCallback(async (city: GeoCity) => {
+  const loadWeather = useCallback(async (city: GeoCity, forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchWeatherData(city);
+      const data = await fetchWeatherData(city, forceRefresh);
       setWeatherData(data);
     } catch (err: any) {
       console.error('Erreur chargement météo :', err);
-      setError('Impossible de charger la météo en direct.');
+      const is503 = err?.message?.includes('503');
+      setError(
+        is503
+          ? 'Le service météo (Open-Meteo) est momentanément surchargé (503). Veuillez réessayer.'
+          : 'Impossible de charger la météo en direct.'
+      );
     } finally {
       setLoading(false);
     }
@@ -222,10 +227,23 @@ export const ChantierWeatherCard: React.FC<ChantierWeatherCardProps> = ({
               </span>
             )}
 
-            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-bna-copper bg-orange-50 border border-orange-200/60 px-2 py-0.5 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LIVE
-            </span>
+            {weatherData?.isStale ? (
+              <button
+                type="button"
+                onClick={() => loadWeather(selectedCity, true)}
+                className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors"
+                title="Données sauvegardées en cache (fournisseur temporairement indisponible). Cliquer pour actualiser."
+              >
+                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                <span>CACHE</span>
+                <RefreshCw className="w-2.5 h-2.5 text-amber-600 ml-0.5" />
+              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-bna-copper bg-orange-50 border border-orange-200/60 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                LIVE
+              </span>
+            )}
 
             {/* Pastille Vigilance Météo-France 🟢🟡🟠🔴 */}
             <button
@@ -344,12 +362,20 @@ export const ChantierWeatherCard: React.FC<ChantierWeatherCardProps> = ({
             <span>Chargement météo chantier pour {selectedCity.name}...</span>
           </div>
         ) : error ? (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between">
-            <span>{error}</span>
+          <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <div>
+                <p className="font-bold">Météo momentanément indisponible</p>
+                <p className="text-[11px] text-amber-800">{error}</p>
+              </div>
+            </div>
             <button
-              onClick={() => loadWeather(selectedCity)}
-              className="font-bold underline text-xs"
+              type="button"
+              onClick={() => loadWeather(selectedCity, true)}
+              className="shrink-0 px-2.5 py-1 bg-white border border-amber-300 rounded-lg font-bold text-xs text-amber-900 hover:bg-amber-100 transition-colors flex items-center gap-1"
             >
+              <RefreshCw className="w-3 h-3" />
               Réessayer
             </button>
           </div>

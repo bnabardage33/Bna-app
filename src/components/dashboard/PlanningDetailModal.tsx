@@ -24,7 +24,7 @@ import {
 } from "@/lib/services/planningService";
 import type { RendezVous } from "@/lib/services/rendezVousService";
 import { supprimerRendezVous, updateRendezVous } from "@/lib/services/rendezVousService";
-import { MermaidViewer } from "./MermaidViewer";
+import { BnaPlanningView } from "./BnaPlanningView";
 import { createClient } from "@/lib/supabase/client";
 
 interface PlanningDetailModalProps {
@@ -32,7 +32,7 @@ interface PlanningDetailModalProps {
   onClose: () => void;
   items: UnifiedPlanningItem[];
   rdvs: RendezVous[];
-  ganttDefinition: string;
+  ganttDefinition?: string;
   onOpenNewRdv: () => void;
   onRefresh: () => void;
 }
@@ -188,7 +188,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
                   : "text-bna-muted hover:text-bna-anthracite"
               }`}
             >
-              Diagramme Gantt Mermaid
+              Vue Gantt BNA
             </button>
           </div>
         </div>
@@ -204,7 +204,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setFilterType(tab.id as any)}
+              onClick={() => setFilterType(tab.id as "tous" | "rdv" | "chantier" | "commande")}
               className={`px-3 py-1.5 rounded-xl font-semibold border shrink-0 transition-all flex items-center gap-1.5 ${
                 filterType === tab.id
                   ? "bg-neutral-900 text-white border-neutral-900 font-bold"
@@ -227,11 +227,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
           {vueMode === "gantt" ? (
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-bna-muted">
-                <span>Diagramme Gantt généré par Mermaid.js</span>
-                <span>Défilement horizontal tactile</span>
-              </div>
-              <MermaidViewer chart={ganttDefinition} minWidth={700} />
+              <BnaPlanningView items={items} />
             </div>
           ) : (
             <div className="space-y-3">

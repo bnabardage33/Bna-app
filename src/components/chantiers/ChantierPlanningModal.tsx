@@ -39,7 +39,7 @@ import {
 } from "@/lib/services/commandesFournisseursService";
 import { updateChantierDates } from "@/lib/services/chantierService";
 import { createClient } from "@/lib/supabase/client";
-import { MermaidViewer } from "@/components/dashboard/MermaidViewer";
+import { BnaPlanningView } from "@/components/dashboard/BnaPlanningView";
 import { NewRdvModal } from "@/components/dashboard/NewRdvModal";
 
 interface ChantierPlanningModalProps {
@@ -348,16 +348,10 @@ export const ChantierPlanningModal: React.FC<ChantierPlanningModalProps> = ({
               </div>
             </div>
 
-            {/* 3. VUE GANTT MERMAID.JS DÉDIÉE AU CHANTIER */}
+            {/* 3. VUE GANTT BNA DÉDIÉE AU CHANTIER */}
             {vueMode === "gantt" && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-bna-muted">
-                  <span>Planning Gantt dynamique du chantier (Mermaid.js)</span>
-                  <span>Défilement tactile horizontal</span>
-                </div>
-                <div className="border border-bna-border rounded-2xl overflow-hidden bg-neutral-50/60 p-1">
-                  <MermaidViewer chart={mermaidChart} minWidth={620} />
-                </div>
+                <BnaPlanningView items={items} />
               </div>
             )}
 

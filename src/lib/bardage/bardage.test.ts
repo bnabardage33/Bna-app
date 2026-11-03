@@ -1,4 +1,11 @@
-import { calculerCalepinage, getHauteurToit } from "./calepinageCalcul.ts";
+import {
+  calculerCalepinage,
+  getHauteurToit,
+  axeSymetrique,
+  MIN_RIVE_WIDTH,
+  DEFAULT_MIN_RIVE_WIDTH_MM,
+  RIVE_MIN_MM,
+} from "./calepinageCalcul.ts";
 import { decoupageModulesCentres, calculerBesoinsBardage, calculerPose } from "./poseCalcul.ts";
 import { genererPercagesPourModules } from "./percages.ts";
 import { genererModules } from "./modules.ts";
@@ -691,5 +698,176 @@ for (const p of pignonCal.pieces) {
     );
   }
 }
+
+// 16. RÈGLE ANTI-MICRO-PLAQUES EN RIVE (Centrage, absorption & seuil minimal MIN_RIVE_WIDTH)
+
+// A. Constantes exportées
+assert(MIN_RIVE_WIDTH === 250, "Anti-micro-plaques : MIN_RIVE_WIDTH = 250 mm");
+assert(DEFAULT_MIN_RIVE_WIDTH_MM === 250, "Anti-micro-plaques : DEFAULT_MIN_RIVE_WIDTH_MM = 250 mm");
+assert(RIVE_MIN_MM === 150, "Anti-micro-plaques : RIVE_MIN_MM = 150 mm (seuil historique)");
+
+// B. Façade 1.05m avec module 1000mm : élimination des micro-rives de 25 mm
+// Sans la règle, le calcul brut donnait [0.025, 1.000, 0.025].
+// Avec la règle anti-micro-plaques, les 2 coupes de 25 mm sont absorbées dans 2 panneaux symétriques de 525 mm.
+const f105 = calculerCalepinage({
+  zoneLargeurM: 1.05,
+  zoneHauteurM: 2.0,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 500,
+  minRiveWidthMm: 250,
+});
+
+assert(f105.colonnesLargeursM.length === 2, "Anti-micro-plaques 1.05m : division en 2 panneaux");
+assert(near(f105.colonnesLargeursM[0], 0.525), "Anti-micro-plaques 1.05m : panneau gauche = 525 mm");
+assert(near(f105.colonnesLargeursM[1], 0.525), "Anti-micro-plaques 1.05m : panneau droit = 525 mm");
+assert(
+  f105.pieces.every((p) => p.largeurM >= 0.25),
+  "Anti-micro-plaques 1.05m : toutes les pièces >= 250 mm (aucune micro-plaque de 25 mm)"
+);
+const rivesF105 = f105.pieces.filter((p) => p.repere.startsWith("R-"));
+assert(
+  rivesF105.every((p) => p.largeurM >= 0.25),
+  "Anti-micro-plaques 1.05m : toutes les pièces R-xx >= 250 mm"
+);
+
+// C. Façade 1.08m avec module 1000mm et minRiveWidthMm: 250
+const f108 = calculerCalepinage({
+  zoneLargeurM: 1.08,
+  zoneHauteurM: 2.4,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 600,
+  minRiveWidthMm: 250,
+});
+assert(
+  near(f108.colonnesLargeursM[0], 0.54) && near(f108.colonnesLargeursM[1], 0.54),
+  "Anti-micro-plaques 1.08m : 2 panneaux de 540 mm (pas de micro-chute de 40 mm)"
+);
+assert(
+  f108.pieces.every((p) => p.largeurM >= 0.25),
+  "Anti-micro-plaques 1.08m : aucune pièce < 250 mm"
+);
+
+// D. Façade 2.05m avec module 1000mm et minRiveWidthMm: 250
+// Le calcul brut donnerait 25 mm + 1000 + 1000 + 25 mm.
+// L'algorithme absorbe un module plein pour élargir les rives à 525 mm : [525, 1000, 525].
+const f205 = calculerCalepinage({
+  zoneLargeurM: 2.05,
+  zoneHauteurM: 2.5,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 500,
+  minRiveWidthMm: 250,
+});
+assert(f205.colonnesLargeursM.length === 3, "Anti-micro-plaques 2.05m : 3 colonnes (2 rives + 1 module)");
+assert(near(f205.colonnesLargeursM[0], 0.525), "Anti-micro-plaques 2.05m : rive gauche = 525 mm");
+assert(near(f205.colonnesLargeursM[1], 1.0), "Anti-micro-plaques 2.05m : module central = 1000 mm");
+assert(near(f205.colonnesLargeursM[2], 0.525), "Anti-micro-plaques 2.05m : rive droite = 525 mm");
+assert(
+  f205.pieces.filter((p) => p.repere.startsWith("R-")).every((p) => p.largeurM >= 0.25),
+  "Anti-micro-plaques 2.05m : aucune pièce R-xx < 250 mm"
+);
+
+// E. Façade 5.40m avec module 1000mm et minRiveWidthMm: 250
+// Brut : 200 mm + 5x1000 + 200 mm (< 250 mm).
+// Avec minRiveWidthMm: 250 -> 4 modules pleins et rives de (5400 - 4000) / 2 = 700 mm.
+const f540 = calculerCalepinage({
+  zoneLargeurM: 5.4,
+  zoneHauteurM: 3.0,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 600,
+  minRiveWidthMm: 250,
+});
+assert(near(f540.colonnesLargeursM[0], 0.7), "Anti-micro-plaques 5.40m : rive gauche élargie à 700 mm");
+assert(near(f540.colonnesLargeursM[f540.colonnesLargeursM.length - 1], 0.7), "Anti-micro-plaques 5.40m : rive droite élargie à 700 mm");
+assert(
+  f540.pieces.filter((p) => p.repere.startsWith("R-")).every((p) => p.largeurM >= 0.25),
+  "Anti-micro-plaques 5.40m : toutes les rives R-xx font 700 mm >= 250 mm"
+);
+
+// F. Seuil personnalisé paramétrable : minRiveWidth: 300 mm sur façade 3.40m
+const f340 = calculerCalepinage({
+  zoneLargeurM: 3.4,
+  zoneHauteurM: 2.5,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 500,
+  minRiveWidth: 300,
+});
+assert(near(f340.colonnesLargeursM[0], 0.7), "Anti-micro-plaques seuil 300mm : rive gauche = 700 mm");
+assert(
+  f340.pieces.every((p) => p.largeurM >= 0.3),
+  "Anti-micro-plaques seuil 300mm : aucune pièce < 300 mm"
+);
+
+// G. Façade étroite (0.40m >= 250mm mais < module 1000mm)
+const f040 = calculerCalepinage({
+  zoneLargeurM: 0.4,
+  zoneHauteurM: 2.0,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 500,
+  minRiveWidthMm: 250,
+});
+assert(f040.colonnesLargeursM.length === 1 && near(f040.colonnesLargeursM[0], 0.4), "Façade étroite 0.40m : 1 panneau plein de 400 mm");
+
+// H. Façade très étroite (0.20m < 250mm)
+const f020 = calculerCalepinage({
+  zoneLargeurM: 0.2,
+  zoneHauteurM: 2.0,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 500,
+  minRiveWidthMm: 250,
+});
+assert(f020.colonnesLargeursM.length === 1 && near(f020.colonnesLargeursM[0], 0.2), "Façade très étroite 0.20m : 1 panneau de 200 mm");
+
+// I. Pignon avec règle anti-micro-plaques (largeur 7.40m, minRiveWidthMm: 250)
+const pignonAntiMicro = calculerCalepinage({
+  zoneLargeurM: 7.4,
+  zoneHauteurM: 2.6,
+  estPignon: true,
+  hauteurFaiteM: 4.2,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 600,
+  minRiveWidthMm: 250,
+});
+assert(near(pignonAntiMicro.colonnesLargeursM[0], 0.7), "Pignon anti-micro-plaques : rives élargies à 700 mm (au lieu de 200 mm)");
+const rivesPignon = pignonAntiMicro.pieces.filter((p) => p.repere.startsWith("R-"));
+assert(
+  rivesPignon.length > 0 && rivesPignon.every((p) => p.largeurM >= 0.25),
+  "Pignon anti-micro-plaques : toutes les pièces de rive R-xx sous l'égout font 700 mm >= 250 mm"
+);
+
+// J. Extension anti-micro-plaques aux pièces de pignon (P-xx) et rampants
+// Pignon de 6.00m x 2.50m (faîte 4.50m) avec module 1000x563 et minRiveWidthMm: 250
+// Les micro-pointes (comme l'ancienne P-03 de 31x21 mm) sont absorbées dans la rangée inférieure.
+const pignonEtendu = calculerCalepinage({
+  zoneLargeurM: 6.0,
+  zoneHauteurM: 2.5,
+  estPignon: true,
+  hauteurFaiteM: 4.5,
+  moduleLargeurMm: 1000,
+  moduleHauteurMm: 563,
+  minRiveWidthMm: 250,
+});
+
+const piecesP = pignonEtendu.pieces.filter((p) => p.type === "pignon" || p.repere.startsWith("P-"));
+assert(piecesP.length > 0, "Pignon anti-micro-plaques étendu : présence de pièces P-xx");
+
+for (const p of piecesP) {
+  const wMm = p.pignonDetails?.cutWidthMm ?? Math.round(p.largeurM * 1000);
+  const hMm = p.pignonDetails?.cutHeightMm ?? Math.round(p.hauteurM * 1000);
+  assert(
+    wMm >= 250,
+    `Pignon anti-micro-plaques : pièce ${p.repere} largeur de base (${wMm} mm) >= 250 mm`
+  );
+  assert(
+    hMm >= 250,
+    `Pignon anti-micro-plaques : pièce ${p.repere} hauteur de rive (${hMm} mm) >= 250 mm`
+  );
+}
+
+// Vérifier également qu'au sommet (faîte), le bloc sommital est solide et >= 250 mm
+const pieceFaite = piecesP.find((p) => p.pignonDetails?.includesRidge);
+assert(
+  pieceFaite !== undefined && (pieceFaite.pignonDetails?.cutWidthMm ?? 0) >= 250,
+  "Pignon anti-micro-plaques : la pointe de faîtage a une base solide >= 250 mm"
+);
 
 console.log(`\n${passed} tests OK`);

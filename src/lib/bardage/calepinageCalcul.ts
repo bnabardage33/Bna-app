@@ -15,9 +15,15 @@
 //      * Pertes réelles / sciure.
 //    - Taux de chute net réel calculé précisément.
 
-import { LIMITE_DTU_MM, decoupageModulesCentres } from "./poseCalcul.ts";
+import {
+  LIMITE_DTU_MM,
+  RIVE_MIN_MM,
+  DEFAULT_MIN_RIVE_WIDTH_MM,
+  MIN_RIVE_WIDTH,
+  decoupageModulesCentres,
+} from "./poseCalcul.ts";
 
-export { LIMITE_DTU_MM };
+export { LIMITE_DTU_MM, RIVE_MIN_MM, DEFAULT_MIN_RIVE_WIDTH_MM, MIN_RIVE_WIDTH };
 export type SensPose = "horizontal" | "vertical";
 
 export interface CalepinageInput {
@@ -39,6 +45,17 @@ export interface CalepinageInput {
    * Non persisté en BDD : à re-sélectionner si le matériau change.
    */
   autoriserRotation?: boolean;
+  /**
+   * Largeur minimale d'une pièce de rive en mm (règle anti-micro-plaques).
+   * Seuil de référence : MIN_RIVE_WIDTH = 250 mm (ou 150 mm par défaut historique si non spécifié).
+   */
+  minRiveWidthMm?: number | null;
+  minRiveWidth?: number | null;
+  /**
+   * Active la règle anti-micro-plaques sur les pièces de pignon (P-xx) et rampants.
+   * Activé par défaut dès que `minRiveWidthMm` ou `minRiveWidth` est spécifié.
+   */
+  antiMicroPignon?: boolean;
 }
 
 export interface PointCalepinage {
@@ -166,6 +183,10 @@ export interface ResultatCalepinage {
   nbPiecesCouplees?: number;
   /** Nombre de blocs combinés issus du couplage */
   nbBlocsCouples?: number;
+  /** Seuil de largeur minimale de rive appliqué (mm, anti-micro-plaques) */
+  minRiveWidthMm: number;
+  /** Règle anti-micro-plaques appliquée aux pièces de pignon */
+  antiMicroPignon?: boolean;
 }
 
 /**
@@ -188,22 +209,36 @@ export function calculerEntraxeReel(largeurModuleMm: number): number {
 }
 
 /**
- * Calepinage ESTHÉTIQUE des colonnes HPL :
+ * Calepinage ESTHÉTIQUE des colonnes HPL avec règle anti-micro-plaques :
  *  - le mur est centré en plaques ENTIÈRES de `moduleMm` (largeur physique),
  *  - riveGauche = riveDroite (symétrie absolue depuis l'axe du mur),
- *  - si une rive < RIVE_MIN_MM, une plaque est retirée pour élargir les rives.
+ *  - si une rive < minRiveMm, une plaque est retirée pour élargir les rives (absorption/fusion),
+ *  - si nModules === 1 et que la rive reste inférieure au seuil minimal, le mur
+ *    est divisé en 2 plaques symétriques (anti-micro-plaques).
  * Ici les plaques gardent leur VRAIE largeur de saisie : les chevrons
  * intermédiaires (entraxe) sont générés séparément dans l'ossature.
  */
-function axeSymetrique(largeurM: number, moduleMm: number): number[] {
+export function axeSymetrique(
+  largeurM: number,
+  moduleMm: number,
+  minRiveMm: number = RIVE_MIN_MM
+): number[] {
   const largeurMm = Math.round(largeurM * 1000);
   const moduleSizeMm = Math.max(1, Math.round(moduleMm));
+  const minRive = Math.max(0, Math.round(minRiveMm));
 
   if (largeurMm <= 0) return [0];
   if (largeurMm < moduleSizeMm) return [largeurMm / 1000];
 
-  const { nModules, riveMm } = decoupageModulesCentres(largeurMm, moduleSizeMm);
-  if (nModules === 0) return [largeurMm / 1000];
+  const { nModules, riveMm } = decoupageModulesCentres(largeurMm, moduleSizeMm, minRive);
+  if (nModules === 0) {
+    if (riveMm > 0 && largeurMm >= 2 * minRive) {
+      const r1 = Math.round(riveMm) / 1000;
+      const r2 = Math.round((largeurMm - Math.round(riveMm))) / 1000;
+      return [r1, r2];
+    }
+    return [largeurMm / 1000];
+  }
 
   const riveM = Math.round(riveMm) / 1000;
   const moduleM = moduleSizeMm / 1000;
@@ -212,6 +247,14 @@ function axeSymetrique(largeurM: number, moduleMm: number): number[] {
   if (riveM > 0.005) colonnes.push(riveM);
   for (let i = 0; i < nModules; i++) colonnes.push(moduleM);
   if (riveM > 0.005) colonnes.push(riveM);
+
+  // Sécurité d'ajustement du cumul exact
+  const sum = colonnes.reduce((a, b) => a + b, 0);
+  const diff = Math.round((largeurM - sum) * 1000) / 1000;
+  if (Math.abs(diff) >= 0.001 && colonnes.length > 0) {
+    colonnes[colonnes.length - 1] = Math.round((colonnes[colonnes.length - 1] + diff) * 1000) / 1000;
+  }
+
   return colonnes;
 }
 
@@ -324,6 +367,178 @@ export function getHauteurToit(x: number, wallWidth: number, hMur: number, hFait
   } else {
     return hMur + ((wallWidth - x) / (wallWidth - ridgeX)) * delta;
   }
+}
+
+/**
+ * Règle Anti-Micro-Plaques pour les Pignons et Rampants :
+ * Élimine toute pièce P-xx dont la largeur utile ou la hauteur de rive
+ * est inférieure au seuil minimal configuré (ex: 250 mm).
+ * Absorbe les micro-pointes et micro-chutes dans la pièce de la rangée
+ * inférieure ou la pièce adjacente horizontale, y compris au faîtage.
+ */
+export function fusionnerMicroPiecesPignon(
+  piecesInput: PieceCalepinage[],
+  largeur: number,
+  hauteurMur: number,
+  hauteurFaite: number,
+  minDimMm: number,
+  maxPanelHeightM = 3.05
+): PieceCalepinage[] {
+  const pieces = [...piecesInput];
+  const ridgeX = largeur / 2;
+  let changed = true;
+  let iterations = 0;
+
+  while (changed && iterations < 30) {
+    changed = false;
+    iterations++;
+
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      if (p.type !== "pignon") continue;
+
+      const wMm = p.pignonDetails?.cutWidthMm ?? Math.round(p.largeurM * 1000);
+      const hMm = p.pignonDetails?.cutHeightMm ?? Math.round(p.hauteurM * 1000);
+      const hL = p.pignonDetails?.hLeftMm ?? 0;
+      const hR = p.pignonDetails?.hRightMm ?? 0;
+
+      const isMicroWidth = wMm < minDimMm;
+      const isMicroHeight = hMm < minDimMm;
+      const isMicroSide = Math.min(hL, hR) < minDimMm;
+
+      if (isMicroWidth || isMicroHeight || isMicroSide) {
+        // 1. Chercher pièce sous-jacente dans la même colonne
+        const below = pieces.find(
+          (b) =>
+            b !== p &&
+            b.colonne === p.colonne &&
+            b.yM < p.yM &&
+            Math.abs(b.yM + b.hauteurM - p.yM) <= 0.015
+        );
+
+        if (below) {
+          const x1 = Math.min(below.xM, p.xM);
+          const x2 = Math.max(below.xM + below.largeurM, p.xM + p.largeurM);
+          const y1 = below.yM;
+          const y2 = p.yM + p.hauteurM;
+
+          if (y2 - y1 <= maxPanelHeightM) {
+            const rect: PointCalepinage[] = [
+              { xM: x1, yM: y1 },
+              { xM: x2, yM: y1 },
+              { xM: x2, yM: y2 },
+              { xM: x1, yM: y2 },
+            ];
+            const clipped = decouperParPignon(rect, largeur, hauteurMur, hauteurFaite);
+            const surfaceM2 = airePolygone(clipped);
+
+            const z1 = getHauteurToit(x1, largeur, hauteurMur, hauteurFaite);
+            const z2 = getHauteurToit(x2, largeur, hauteurMur, hauteurFaite);
+            const incRidge = x1 < ridgeX - 1e-4 && x2 > ridgeX + 1e-4;
+            const newHL = Math.max(0, Math.min(y2 - y1, z1 - y1));
+            const newHR = Math.max(0, Math.min(y2 - y1, z2 - y1));
+            const newHP = incRidge ? Math.max(0, Math.min(y2 - y1, hauteurFaite - y1)) : 0;
+            const cutW = Math.round((x2 - x1) * 1000);
+            const cutH = Math.round(Math.max(newHL, newHR, newHP) * 1000);
+
+            below.xM = x1;
+            below.yM = y1;
+            below.largeurM = cutW / 1000;
+            below.hauteurM = cutH / 1000;
+            below.surfaceM2 = surfaceM2;
+            below.points = clipped.length >= 3 ? clipped : below.points;
+            below.type = "pignon";
+            below.pignonDetails = {
+              hLeftMm: Math.round(newHL * 1000),
+              hRightMm: Math.round(newHR * 1000),
+              hPeakMm: Math.round(newHP * 1000),
+              cutWidthMm: cutW,
+              cutHeightMm: cutH,
+              includesRidge: incRidge,
+              xReal1M: x1,
+              xReal2M: x2,
+            };
+
+            pieces.splice(i, 1);
+            changed = true;
+            break;
+          }
+        }
+
+        // 2. Si pas de pièce dessous ou limite hauteur atteinte, chercher adjacent horizontalement
+        const adj = pieces.find(
+          (a) =>
+            a !== p &&
+            a.rangee === p.rangee &&
+            (Math.abs(a.xM + a.largeurM - p.xM) <= 0.015 || Math.abs(p.xM + p.largeurM - a.xM) <= 0.015)
+        );
+
+        if (adj) {
+          const x1 = Math.min(adj.xM, p.xM);
+          const x2 = Math.max(adj.xM + adj.largeurM, p.xM + p.largeurM);
+          const y1 = Math.min(adj.yM, p.yM);
+          const y2 = Math.max(adj.yM + adj.hauteurM, p.yM + p.hauteurM);
+
+          const rect: PointCalepinage[] = [
+            { xM: x1, yM: y1 },
+            { xM: x2, yM: y1 },
+            { xM: x2, yM: y2 },
+            { xM: x1, yM: y2 },
+          ];
+          const clipped = decouperParPignon(rect, largeur, hauteurMur, hauteurFaite);
+          const surfaceM2 = airePolygone(clipped);
+
+          const z1 = getHauteurToit(x1, largeur, hauteurMur, hauteurFaite);
+          const z2 = getHauteurToit(x2, largeur, hauteurMur, hauteurFaite);
+          const incRidge = x1 < ridgeX - 1e-4 && x2 > ridgeX + 1e-4;
+          const newHL = Math.max(0, Math.min(y2 - y1, z1 - y1));
+          const newHR = Math.max(0, Math.min(y2 - y1, z2 - y1));
+          const newHP = incRidge ? Math.max(0, Math.min(y2 - y1, hauteurFaite - y1)) : 0;
+          const cutW = Math.round((x2 - x1) * 1000);
+          const cutH = Math.round(Math.max(newHL, newHR, newHP) * 1000);
+
+          adj.xM = x1;
+          adj.yM = y1;
+          adj.largeurM = cutW / 1000;
+          adj.hauteurM = cutH / 1000;
+          adj.surfaceM2 = surfaceM2;
+          adj.points = clipped.length >= 3 ? clipped : adj.points;
+          adj.type = "pignon";
+          adj.pignonDetails = {
+            hLeftMm: Math.round(newHL * 1000),
+            hRightMm: Math.round(newHR * 1000),
+            hPeakMm: Math.round(newHP * 1000),
+            cutWidthMm: cutW,
+            cutHeightMm: cutH,
+            includesRidge: incRidge,
+            xReal1M: x1,
+            xReal2M: x2,
+          };
+
+          pieces.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+
+  // Renumérotation propre des repères
+  let pIndex = 1;
+  const pignonPieces = pieces.filter((p) => p.type === "pignon").sort((a, b) => a.yM - b.yM || a.xM - b.xM);
+  for (const pp of pignonPieces) {
+    pp.repere = `P-${String(pIndex++).padStart(2, "0")}`;
+  }
+
+  let mIndex = 1;
+  let rIndex = 1;
+  const rectPieces = pieces.filter((p) => p.type !== "pignon").sort((a, b) => a.rangee - b.rangee || a.colonne - b.colonne);
+  for (const rp of rectPieces) {
+    if (rp.type === "pleine") rp.repere = `M-${String(mIndex++).padStart(2, "0")}`;
+    else rp.repere = `R-${String(rIndex++).padStart(2, "0")}`;
+  }
+
+  return pieces;
 }
 
 /**
@@ -819,12 +1034,19 @@ export function calculerCalepinage(input: CalepinageInput): ResultatCalepinage {
   const nombreEspaces = Math.ceil(Math.max(1, dimension) / LIMITE_DTU_MM);
   const entraxeReelMm = Math.max(1, dimension) / nombreEspaces;
 
-  // Découpage esthétique centré : plaques ENTIÈRES (largeur physique),
+  const minRiveWidthMm =
+    input.minRiveWidthMm !== undefined && input.minRiveWidthMm !== null
+      ? input.minRiveWidthMm
+      : input.minRiveWidth !== undefined && input.minRiveWidth !== null
+      ? input.minRiveWidth
+      : RIVE_MIN_MM;
+
+  // Découpage esthétique centré avec règle anti-micro-plaques : plaques ENTIÈRES (largeur physique),
   // rives symétriques, indépendant de l'ossature.
-  const colonnesLargeursM = axeSymetrique(largeur, dimModuleLargeurAxeMm);
+  const colonnesLargeursM = axeSymetrique(largeur, dimModuleLargeurAxeMm, minRiveWidthMm);
   const rangeesHauteursM = axeEquivalent(hauteurTotale, dimModuleHauteurAxeMm);
 
-  const pieces: PieceCalepinage[] = [];
+  let pieces: PieceCalepinage[] = [];
   let yCumul = 0;
   let compteurPieces = 1;
   let compteurRives = 1;
@@ -1023,6 +1245,22 @@ export function calculerCalepinage(input: CalepinageInput): ResultatCalepinage {
     yCumul += hauteurPiece;
   });
 
+  // Règle anti-micro-plaques étendue aux pièces de pignon (P-xx) et rampants
+  const activerAntiMicroPignon =
+    input.antiMicroPignon ??
+    (input.minRiveWidthMm !== undefined && input.minRiveWidthMm !== null);
+
+  if (estPignon && activerAntiMicroPignon) {
+    pieces = fusionnerMicroPiecesPignon(
+      pieces,
+      largeur,
+      hauteurMur,
+      hauteurFaite,
+      minRiveWidthMm,
+      rawLongueurMm ? Math.max(rawLongueurMm, rawLargeurMm) / 1000 : 3.05
+    );
+  }
+
   const surfaceZoneM2 = pieces.reduce((s, p) => s + p.surfaceM2, 0);
   const nbPiecesPosees = pieces.length;
 
@@ -1105,5 +1343,7 @@ export function calculerCalepinage(input: CalepinageInput): ResultatCalepinage {
     piecesIncompatibles: piecesIncompatibles.length > 0 ? piecesIncompatibles : undefined,
     nbPiecesCouplees,
     nbBlocsCouples,
+    minRiveWidthMm,
+    antiMicroPignon: activerAntiMicroPignon,
   };
 }

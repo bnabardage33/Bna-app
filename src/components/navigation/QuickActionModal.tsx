@@ -1,13 +1,18 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Camera, Mic, Ruler, Grid, FolderPlus, FilePlus, X } from "lucide-react";
+import type { Chantier } from "@/types/metier";
+import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
 
 interface QuickActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenCalepinage: () => void;
   onOpenNewChantier?: () => void;
+  onOpenPhoto?: () => void;
+  chantier?: Chantier | null;
+  chantiers?: Chantier[];
 }
 
 export const QuickActionModal: React.FC<QuickActionModalProps> = ({
@@ -15,16 +20,43 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
   onClose,
   onOpenCalepinage,
   onOpenNewChantier,
+  onOpenPhoto,
+  chantier,
+  chantiers,
 }) => {
-  if (!isOpen) return null;
+  const [isInternalPhotoOpen, setIsInternalPhotoOpen] = useState(false);
+
+  if (!isOpen && !isInternalPhotoOpen) return null;
+
+  if (isInternalPhotoOpen && chantier) {
+    return (
+      <PhotoConstatModal
+        isOpen={true}
+        onClose={() => {
+          setIsInternalPhotoOpen(false);
+          onClose();
+        }}
+        chantier={chantier}
+        chantiers={chantiers}
+      />
+    );
+  }
 
   const actions = [
     {
       title: "Prendre une photo",
-      desc: "Chantier en cours ou constat",
+      desc: chantier ? `${chantier.nom} · Constat ou pointage` : "Chantier en cours ou constat",
       icon: Camera,
       color: "bg-blue-50 text-blue-600",
-      action: () => alert("Capture photo"),
+      action: () => {
+        if (onOpenPhoto) {
+          onOpenPhoto();
+        } else if (chantier) {
+          setIsInternalPhotoOpen(true);
+        } else {
+          alert("Veuillez d'abord sélectionner ou créer un chantier.");
+        }
+      },
     },
     {
       title: "Note vocale",
@@ -80,7 +112,9 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
         <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">
           <div>
             <h3 className="font-display font-bold text-lg text-bna-anthracite">Actions rapides</h3>
-            <p className="text-xs text-bna-muted">Création & saisie directe terrain</p>
+            <p className="text-xs text-bna-muted">
+              {chantier ? `Chantier actif : ${chantier.nom}` : "Création & saisie directe terrain"}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -98,7 +132,9 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
               <button
                 key={index}
                 onClick={() => {
-                  onClose();
+                  if (act.title !== "Prendre une photo" || onOpenPhoto) {
+                    onClose();
+                  }
                   act.action();
                 }}
                 className="flex flex-col items-start p-3.5 bg-bna-offwhite hover:bg-[#eceae4] rounded-2xl border border-bna-border transition-all text-left active:scale-[0.98]"

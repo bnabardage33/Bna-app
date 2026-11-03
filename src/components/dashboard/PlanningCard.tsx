@@ -16,7 +16,6 @@ import {
 import type { Chantier } from "@/types/metier";
 import {
   buildUnifiedPlanning,
-  generateMermaidGantt,
   NATURES_CONFIG,
   type UnifiedPlanningItem,
 } from "@/lib/services/planningService";
@@ -26,7 +25,7 @@ import {
   type CommandeAvecFournisseur,
 } from "@/lib/services/commandesFournisseursService";
 import { createClient } from "@/lib/supabase/client";
-import { MermaidViewer } from "./MermaidViewer";
+import { BnaPlanningView } from "./BnaPlanningView";
 import { NewRdvModal } from "./NewRdvModal";
 import { PlanningDetailModal } from "./PlanningDetailModal";
 
@@ -71,15 +70,10 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
     };
   }, [supabase, refreshKey]);
 
-  // Construction de la liste unifiée et du code Mermaid Gantt
+  // Construction de la liste unifiée
   const unifiedItems = useMemo(
     () => buildUnifiedPlanning(chantiers, commandes, rdvs),
     [chantiers, commandes, rdvs]
-  );
-
-  const mermaidChart = useMemo(
-    () => generateMermaidGantt(unifiedItems),
-    [unifiedItems]
   );
 
   // Prochains jalons immédiats (top 3)
@@ -149,15 +143,17 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
         </div>
       </div>
 
-      {/* ZONE CENTRALE : DIAGRAMME MERMAID.JS GANTT */}
+      {/* ZONE CENTRALE : PLANNING GANTT NATIF REACT/TAILWIND BNA */}
       <div className="space-y-1">
-        <div className="flex items-center justify-between text-[10px] text-bna-muted px-1">
-          <span>Planning général dynamique (Mermaid.js)</span>
-          <span>Glisse pour défiler</span>
-        </div>
-        <div className="border border-bna-border rounded-xl overflow-hidden bg-neutral-50/50">
-          <MermaidViewer chart={mermaidChart} minWidth={560} />
-        </div>
+        <BnaPlanningView
+          items={unifiedItems}
+          onSelectChantier={onSelectChantier}
+          onSelectItem={(item) => {
+            if (item.chantierId && onSelectChantier) {
+              onSelectChantier(item.chantierId);
+            }
+          }}
+        />
       </div>
 
       {/* APERÇU RAPIDE DES PROCHAINS JALONS IMMÉDIATS (RDV, CHANTIERS, COMMANDES) */}
@@ -239,7 +235,6 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
         onClose={() => setIsDetailOpen(false)}
         items={unifiedItems}
         rdvs={rdvs}
-        ganttDefinition={mermaidChart}
         onOpenNewRdv={() => {
           setIsDetailOpen(false);
           setIsNewRdvOpen(true);

@@ -15,6 +15,7 @@ import { CockpitScreen } from "@/components/screens/CockpitScreen";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
 import { ChantierCard } from "@/components/chantiers/ChantierCard";
+import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
 import { ClientsScreen } from "@/components/clients/ClientsScreen";
 import { CorbeilleModal } from "@/components/corbeille/CorbeilleModal";
 import { Chantier } from "@/types/metier";
@@ -36,6 +37,7 @@ export default function HomePage() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
   const [isCorbeilleOpen, setIsCorbeilleOpen] = useState(false);
+  const [isQuickPhotoOpen, setIsQuickPhotoOpen] = useState(false);
 
   const [chantiers, setChantiers] = useState<Chantier[]>([]);
   const [activeChantierId, setActiveChantierId] = useState<string>("");
@@ -140,6 +142,7 @@ export default function HomePage() {
         {currentTab === "terrain" && (
           <TerrainScreen
             chantier={currentChantier}
+            chantiers={chantiers}
             onOpenCalepinage={() => {
               setCalepinageSourceVersion(null);
               setIsCalepinageOpen(true);
@@ -312,6 +315,12 @@ export default function HomePage() {
       <QuickActionModal
         isOpen={isQuickActionOpen}
         onClose={() => setIsQuickActionOpen(false)}
+        chantier={currentChantier}
+        chantiers={chantiers}
+        onOpenPhoto={() => {
+          setIsQuickActionOpen(false);
+          setIsQuickPhotoOpen(true);
+        }}
         onOpenCalepinage={() => {
           setCalepinageSourceVersion(null);
           setIsCalepinageOpen(true);
@@ -321,6 +330,18 @@ export default function HomePage() {
           setIsNewChantierOpen(true);
         }}
       />
+
+      {/* Modal Photo : Constat ou Pointage & Galerie (depuis Actions Rapides) */}
+      {currentChantier && (
+        <PhotoConstatModal
+          isOpen={isQuickPhotoOpen}
+          onClose={() => setIsQuickPhotoOpen(false)}
+          chantier={currentChantier}
+          chantiers={chantiers}
+          onSelectChantier={(id) => setActiveChantierId(id)}
+          onPhotoAdded={refreshChantiers}
+        />
+      )}
 
       {/* Modal Calepinage Déterministe */}
       <CalepinageModal
