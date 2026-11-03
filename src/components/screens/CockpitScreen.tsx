@@ -35,6 +35,7 @@ import { ChantierWeatherCard } from "@/components/weather/ChantierWeatherCard";
 import { UpdateAvancementModal } from "@/components/chantiers/UpdateAvancementModal";
 import { ChantierPlanningModal } from "@/components/chantiers/ChantierPlanningModal";
 import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
+import { PvReceptionSavModal } from "@/components/chantiers/PvReceptionSavModal";
 import {
   ChantierAvancementState,
   loadChantierAvancement,
@@ -79,6 +80,7 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
   const [isQuantitatifsOpen, setIsQuantitatifsOpen] = useState(false);
   const [isMateriauxOpen, setIsMateriauxOpen] = useState(false);
   const [isPlanningOpen, setIsPlanningOpen] = useState(false);
+  const [isPvSavOpen, setIsPvSavOpen] = useState(false);
   const [chantierDates, setChantierDates] = useState<{ dateDebut?: string; dateFin?: string }>({
     dateDebut: chantier.date_debut_prevue,
     dateFin: chantier.date_fin_prevue,
@@ -449,28 +451,23 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
             </div>
           </div>
 
-          {/* Documents & Devis */}
+          {/* PV de Réception, Réserves & SAV Décennale */}
           <div
-            onClick={() => alert("Accès Documents & Devis")}
+            onClick={() => setIsPvSavOpen(true)}
             className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
           >
             <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-bna-muted" />
-              <span className="font-medium text-bna-anthracite">Documents & Devis</span>
+              <FileText className="w-4 h-4 text-bna-copper" />
+              <span className="font-medium text-bna-anthracite">
+                PV de Réception, Réserves &amp; SAV Décennale
+              </span>
             </div>
-            <ChevronRight className="w-4 h-4 text-bna-muted" />
-          </div>
-
-          {/* Dépenses & Heures passées */}
-          <div
-            onClick={() => alert("Accès Dépenses & Heures")}
-            className="flex items-center justify-between py-2.5 cursor-pointer hover:text-bna-copper transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-bna-muted" />
-              <span className="font-medium text-bna-anthracite">Dépenses & Heures passées</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-bna-copper bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                Art. 1792-6
+              </span>
+              <ChevronRight className="w-4 h-4 text-bna-muted" />
             </div>
-            <ChevronRight className="w-4 h-4 text-bna-muted" />
           </div>
         </div>
       </section>
@@ -525,6 +522,14 @@ export const CockpitScreen: React.FC<CockpitScreenProps> = ({
         isOpen={isPhotoModalOpen}
         onClose={() => setIsPhotoModalOpen(false)}
         chantier={displayChantier}
+      />
+
+      {/* Modal PV de Réception, Levée des Réserves & Fiches SAV Décennale */}
+      <PvReceptionSavModal
+        isOpen={isPvSavOpen}
+        onClose={() => setIsPvSavOpen(false)}
+        chantier={displayChantier}
+        allChantiers={[displayChantier]}
       />
     </div>
   );

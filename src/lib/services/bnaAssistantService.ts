@@ -17,6 +17,15 @@ import {
   type DevisItem,
   type FactureItem,
 } from "./devisFinanceService.ts";
+import {
+  getPvReceptions,
+  getTicketsSav,
+  calculerSynthesePvSav,
+  LABELS_STATUT_PV,
+  LABELS_GARANTIE_SAV,
+  type PvReceptionItem,
+  type TicketSavItem,
+} from "./pvSavService.ts";
 
 export type AssistantActionType =
   | "create_rdv"
@@ -627,7 +636,7 @@ export function generateLocalAssistantResponse(
     lower.includes("météo") ||
     lower.includes("meteo") ||
     lower.includes("pluie") ||
-    lower.includes("vent") ||
+    /\bvent\b/i.test(lower) ||
     lower.includes("intempérie") ||
     lower.includes("intemperie") ||
     lower.includes("poser demain") ||
@@ -711,6 +720,67 @@ export function generateLocalAssistantResponse(
           type: "open_devis",
           title: "Ouvrir l'espace Devis, Factures & Marges",
           description: "Consulter les devis, émettre une situation d'avancement ou relancer une facture",
+          payload: {},
+        },
+      ],
+      tags,
+    };
+  }
+
+  // CAS 3.6 : PV de Réception, Réserves à lever & Interventions SAV / Garantie Décennale
+  if (
+    lower.includes("pv") ||
+    lower.includes("réception") ||
+    lower.includes("reception") ||
+    lower.includes("réserve") ||
+    lower.includes("reserve") ||
+    lower.includes("sav") ||
+    lower.includes("décennale") ||
+    lower.includes("decennale") ||
+    lower.includes("garantie") ||
+    lower.includes("sinistre")
+  ) {
+    tags.push("PV de Réception", "SAV & Garantie Décennale");
+    const pvs = getPvReceptions();
+    const savs = getTicketsSav();
+    const synthese = calculerSynthesePvSav(pvs, savs);
+
+    const lines: string[] = [
+      `🛡️ **État des PV de Réception, Réserves & Interventions SAV BNA :**`,
+      "",
+      `• **Procès-Verbaux enregistrés** : **${synthese.total_pv}** (${synthese.nb_reserves_non_levees} réserve(s) restant à lever)`,
+    ];
+
+    for (const pv of pvs) {
+      const nonLevees = pv.reserves.filter((r) => !r.levee);
+      lines.push(
+        `  ↳ **${pv.numero}** — **${pv.chantier_nom}** (${pv.client_nom}) : *${LABELS_STATUT_PV[pv.statut].label}*`
+      );
+      if (nonLevees.length > 0) {
+        nonLevees.forEach((r) => {
+          lines.push(`     ⚠️ Réserve à lever avant le ${r.date_limite} : *"${r.designation}"* (${r.localisation})`);
+        });
+      }
+    }
+
+    lines.push("");
+    lines.push(`🔧 **Tickets SAV & Garantie Décennale / GPA (${synthese.tickets_sav_ouverts} actif(s)) :**`);
+    for (const sav of savs) {
+      lines.push(
+        `  ↳ **${sav.numero}** — **${sav.chantier_nom}** : *${sav.type_sinistre}* (${LABELS_GARANTIE_SAV[sav.type_garantie]}) — Intervention prévue le **${sav.date_intervention}**`
+      );
+      lines.push(`     Diagnostic DTU : *${sav.diagnostic_dtu}*`);
+    }
+
+    return {
+      content: lines.join("\n"),
+      actions: [
+        ...actions,
+        {
+          id: `act-open-pvsav-${Date.now()}`,
+          type: "open_devis",
+          title: "Ouvrir l'onglet PV de Réception & SAV",
+          description: "Pointer la levée des réserves, libérer la retenue 5% ou éditer un rapport SAV",
           payload: {},
         },
       ],

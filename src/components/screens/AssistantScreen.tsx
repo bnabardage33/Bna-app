@@ -87,6 +87,10 @@ const QUICK_PROMPTS = [
     prompt: "Crée un devis pour Terrasse Martin de 40 m².",
   },
   {
+    label: "🛡️ PV Réception & SAV",
+    prompt: "Quelles sont les réserves à lever sur mes PV de réception et mes interventions SAV en cours ?",
+  },
+  {
     label: "📦 État des commandes",
     prompt: "Quel est l'état de mes commandes fournisseurs et des prochaines livraisons ?",
   },

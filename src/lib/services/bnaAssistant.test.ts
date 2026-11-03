@@ -13,6 +13,11 @@ import {
   getDevisList,
   getFacturesList,
 } from "./devisFinanceService.ts";
+import {
+  getPvReceptions,
+  getTicketsSav,
+  calculerSynthesePvSav,
+} from "./pvSavService.ts";
 
 let passed = 0;
 function assert(condition: boolean, msg: string) {
@@ -208,4 +213,18 @@ assert(resTresorerie.content.includes("FAC-2026-0086"), "6.D: Assistant IA signa
 const devActions = detectAssistantActions("Crée un devis pour Terrasse Martin de 45 m²", mockContext);
 assert(devActions.some((a) => a.type === "create_devis" && a.payload.devisQuantite === 45), "6.E: Action Card create_devis (45 m²) générée par l'IA");
 
-console.log(`\n🎉 TOUS LES TESTS DE L'ASSISTANT IA & FINANCES BNA SONT VALIDÉS (${passed} assertions) !`);
+// 7. Test PV de Réception, Réserves & Interventions SAV Décennale (Art. 1792-6 Code Civil)
+const pvs = getPvReceptions();
+const savs = getTicketsSav();
+const synthesePvSav = calculerSynthesePvSav(pvs, savs);
+assert(synthesePvSav.total_pv === 2, "7.A: 2 PV de réception initiaux chargés");
+assert(synthesePvSav.nb_reserves_non_levees === 1, "7.B: 1 réserve active à lever détectée sur Terrasse Martin");
+assert(synthesePvSav.tickets_sav_ouverts === 1, "7.C: 1 intervention SAV active détectée sur Bardage Dupont");
+
+const resPvSav = generateLocalAssistantResponse(
+  "Quelles sont les réserves à lever sur mes PV de réception et mes interventions SAV ?",
+  mockContext
+);
+assert(resPvSav.content.includes("PV-2026-0014") && resPvSav.content.includes("SAV-2026-0008"), "7.D: Assistant IA liste les PV, les réserves à lever et les tickets SAV DTU");
+
+console.log(`\n🎉 TOUS LES TESTS DE L'ASSISTANT IA, FINANCES, PV & SAV BNA SONT VALIDÉS (${passed} assertions) !`);

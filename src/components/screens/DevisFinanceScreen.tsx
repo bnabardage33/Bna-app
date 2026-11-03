@@ -42,6 +42,7 @@ import {
   type LigneChiffrage,
   type TauxTvaBtp,
 } from "@/lib/services/devisFinanceService";
+import { PvReceptionSavPanel } from "@/components/chantiers/PvReceptionSavModal";
 
 interface DevisFinanceScreenProps {
   chantiers: Chantier[];
@@ -55,7 +56,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
   onOpenAssistant,
 }) => {
   const supabase = createClient();
-  const [subTab, setSubTab] = useState<"devis" | "factures" | "rentabilite">("devis");
+  const [subTab, setSubTab] = useState<"devis" | "factures" | "rentabilite" | "pvsav">("devis");
   const [devisList, setDevisList] = useState<DevisItem[]>([]);
   const [facturesList, setFacturesList] = useState<FactureItem[]>([]);
   const [filterStatutDevis, setFilterStatutDevis] = useState<string>("tous");
@@ -332,8 +333,8 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
         </div>
       </div>
 
-      {/* SÉLECTEUR DES 3 SOUS-ONGLETS */}
-      <div className="grid grid-cols-3 gap-1 p-1 bg-neutral-100 rounded-2xl text-xs font-bold">
+      {/* SÉLECTEUR DES 4 SOUS-ONGLETS */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-neutral-100 rounded-2xl text-xs font-bold">
         <button
           type="button"
           onClick={() => setSubTab("devis")}
@@ -371,6 +372,19 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
         >
           <TrendingUp className="w-4 h-4" />
           <span>Marges Chantiers</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab("pvsav")}
+          className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+            subTab === "pvsav"
+              ? "bg-white text-bna-copper shadow-xs"
+              : "text-bna-muted hover:text-bna-anthracite"
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>PV Réception &amp; SAV</span>
         </button>
       </div>
 
@@ -803,6 +817,11 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
           })}
         </div>
       )}
+
+      {/* =========================================================
+          ONGLET 4 : PROCÈS-VERBAUX DE RÉCEPTION, RÉSERVES & SAV DTU
+         ========================================================= */}
+      {subTab === "pvsav" && <PvReceptionSavPanel chantiers={chantiers} />}
 
       {/* =========================================================
           MODALE CRÉATION DE DEVIS + IMPORT CALEPINAGE
