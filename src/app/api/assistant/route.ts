@@ -31,10 +31,15 @@ async function callMistralLlm(systemPrompt: string, userMessage: string, apiKey:
       signal: controller.signal,
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn("Erreur Mistral API:", res.status, err);
+      return null;
+    }
     const data = await res.json();
     return data?.choices?.[0]?.message?.content?.trim() || null;
-  } catch {
+  } catch (e) {
+    console.warn("Exception appel Mistral:", e);
     return null;
   } finally {
     clearTimeout(timer);
@@ -65,10 +70,15 @@ async function callGroqLlm(systemPrompt: string, userMessage: string, apiKey: st
       signal: controller.signal,
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const err = await res.text();
+      console.warn("Erreur Groq API:", res.status, err);
+      return null;
+    }
     const data = await res.json();
     return data?.choices?.[0]?.message?.content?.trim() || null;
-  } catch {
+  } catch (e) {
+    console.warn("Exception appel Groq:", e);
     return null;
   } finally {
     clearTimeout(timer);
