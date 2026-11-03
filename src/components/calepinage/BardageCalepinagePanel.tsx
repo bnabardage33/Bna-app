@@ -1156,7 +1156,10 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
         )}
       </div>
 
-      {/* BARRE MULTI-FAÇADES : SÉLECTION INDÉPENDANTE + AJOUT + RÉCAP GLOBAL */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* COLONNE GAUCHE (Desktop lg:col-span-5) : BARRE MULTI-FAÇADES & FORMULAIRE */}
+        <div className="lg:col-span-5 space-y-3">
+          {/* BARRE MULTI-FAÇADES : SÉLECTION INDÉPENDANTE + AJOUT + RÉCAP GLOBAL */}
       <div className="p-2.5 bg-bna-offwhite border border-bna-border rounded-xl space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -1363,8 +1366,11 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
           )}
         </div>
       </div>
+        </div>
 
-      {"erreur" in calcul ? (
+        {/* COLONNE DROITE (Desktop lg:col-span-7) : PLAN 2D, MAQUETTE 3D, DÉBIT & MÉTRÉ */}
+        <div className="lg:col-span-7 space-y-3">
+          {"erreur" in calcul ? (
         <p className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" /> {calcul.erreur}
         </p>
@@ -1835,6 +1841,8 @@ export const BardageCalepinagePanel: React.FC<BardageCalepinagePanelProps> = ({
           )}
         </>
       )}
+        </div>
+      </div>
     </div>
   );
 };

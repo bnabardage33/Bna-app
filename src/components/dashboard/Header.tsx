@@ -15,8 +15,9 @@ export const Header: React.FC<HeaderProps> = ({
   const greeting = userName ? `Bonjour, ${userName}` : "Bonjour";
 
   return (
-    <header className="pt-2 pb-4">
-      <div className="flex items-center justify-between">
+    <header className="pt-2 pb-4 md:pb-6">
+      {/* Ligne logo uniquement visible sur mobile (< md), car présente dans la barre supérieure sur Desktop */}
+      <div className="flex items-center justify-between md:hidden">
         <div className="font-display font-black text-2xl tracking-tighter text-bna-anthracite">
           BN<span className="text-bna-copper">A</span>
         </div>
@@ -30,11 +31,28 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      <div className="mt-4">
-        <span className="text-xs font-medium text-bna-muted">{currentDate}</span>
-        <h1 className="font-display font-bold text-2xl text-bna-anthracite mt-0.5 tracking-tight">
-          {greeting}
-        </h1>
+      {/* Salutation & date (avec bouton profil aligné à droite sur Desktop) */}
+      <div className="mt-4 md:mt-0 flex items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-medium text-bna-muted">{currentDate}</span>
+          <h1 className="font-display font-bold text-2xl md:text-3xl text-bna-anthracite mt-0.5 tracking-tight">
+            {greeting}
+          </h1>
+        </div>
+
+        <button
+          onClick={onOpenAuth}
+          className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-white border border-bna-border hover:border-bna-copper transition-colors cursor-pointer shadow-2xs"
+          title="Mon profil & connexion"
+          aria-label="Mon profil & connexion"
+        >
+          <span className="w-7 h-7 rounded-full bg-bna-offwhite border border-bna-border flex items-center justify-center font-display font-bold text-xs text-bna-anthracite">
+            {initial}
+          </span>
+          <span className="text-xs font-semibold text-bna-anthracite pr-1">
+            {userName || "Compte BNA"}
+          </span>
+        </button>
       </div>
     </header>
   );

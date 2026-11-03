@@ -93,9 +93,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-bna-offwhite text-bna-anthracite flex flex-col justify-between">
-      {/* Container mobile centré */}
-      <main className="w-full max-w-mobile mx-auto px-4 pt-[max(16px,env(safe-area-inset-top))] pb-[90px] flex-1">
-        {/* ÉCRAN ACCUEIL (Figé & Inchangé) */}
+      {/* Conteneur adaptatif : Mobile (< md) max-w-md inchangé | Desktop (md: / lg:) max-w-5xl / max-w-7xl avec md:pt-24 sous la navbar fixe h-16 */}
+      <main className="w-full max-w-md md:max-w-5xl lg:max-w-7xl mx-auto px-4 md:px-6 pt-4 md:pt-24 pb-[90px] md:pb-12 flex-1">
+        {/* ÉCRAN ACCUEIL */}
         {currentTab === "accueil" && (
           <div className="animate-in fade-in duration-150">
             <Header
@@ -103,38 +103,56 @@ export default function HomePage() {
               currentDate="Jeudi 29 octobre"
               onOpenAuth={() => setIsAuthOpen(true)}
             />
-            <WeatherCard
-              chantier={currentChantier}
-              allChantiers={chantiers}
-              onSelectChantier={(id) => setActiveChantierId(id)}
-            />
-            <PlanningCard
-              chantiers={chantiers}
-              activeChantierId={activeChantierId}
-              onSelectChantier={(id) => {
-                setActiveChantierId(id);
-                setCurrentTab("cockpit");
-              }}
-            />
-            <FeaturedProjectCard
-              chantier={currentChantier}
-              onOpenCockpit={() => {
-                if (currentChantier) {
-                  setActiveChantierId(currentChantier.id);
-                  setCurrentTab("cockpit");
-                }
-              }}
-              onNewChantier={() => setIsNewChantierOpen(true)}
-              onAvancementUpdated={refreshChantiers}
-            />
-            <RiskProjectsCard
-              chantiers={chantiers}
-              onSelectChantier={(id) => {
-                setActiveChantierId(id);
-                setCurrentTab("cockpit");
-              }}
-            />
-            <QuickLinksCard />
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Colonne Gauche (Desktop) : Bloc Météo Chantier + Intelligence Métier BNA / Assistant de Pose */}
+              <div className="lg:col-span-6">
+                <WeatherCard
+                  chantier={currentChantier}
+                  allChantiers={chantiers}
+                  onSelectChantier={(id) => setActiveChantierId(id)}
+                />
+              </div>
+
+              {/* Colonne Droite (Desktop) : Planning & Jalons BNA + Projet en vedette + Accès rapides */}
+              <div className="lg:col-span-6">
+                <PlanningCard
+                  chantiers={chantiers}
+                  activeChantierId={activeChantierId}
+                  onSelectChantier={(id) => {
+                    setActiveChantierId(id);
+                    setCurrentTab("cockpit");
+                  }}
+                />
+                <FeaturedProjectCard
+                  chantier={currentChantier}
+                  onOpenCockpit={() => {
+                    if (currentChantier) {
+                      setActiveChantierId(currentChantier.id);
+                      setCurrentTab("cockpit");
+                    }
+                  }}
+                  onNewChantier={() => setIsNewChantierOpen(true)}
+                  onAvancementUpdated={refreshChantiers}
+                />
+                <RiskProjectsCard
+                  chantiers={chantiers}
+                  onSelectChantier={(id) => {
+                    setActiveChantierId(id);
+                    setCurrentTab("cockpit");
+                  }}
+                />
+                <QuickLinksCard
+                  chantiersCount={chantiers.length}
+                  onOpenCalepinage={() => {
+                    setCalepinageSourceVersion(null);
+                    setIsCalepinageOpen(true);
+                  }}
+                  onOpenDevis={() => setCurrentTab("devis")}
+                  onOpenChantiers={() => setCurrentTab("chantiers")}
+                />
+              </div>
+            </div>
           </div>
         )}
 
@@ -258,7 +276,7 @@ export default function HomePage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
                     {chantiers.map((ch) => (
                       <ChantierCard
                         key={ch.id}
@@ -304,11 +322,15 @@ export default function HomePage() {
         )}
       </main>
 
-      {/* Navigation basse partagée */}
+      {/* Navigation partagée (Bottom Bar sur mobile < md | Top Bar pro sur Desktop >= md) */}
       <BottomNav
         currentTab={currentTab === "cockpit" ? "chantiers" : currentTab}
         onTabChange={(tab) => setCurrentTab(tab)}
         onOpenQuickAction={() => setIsQuickActionOpen(true)}
+        onOpenCalepinage={() => {
+          setCalepinageSourceVersion(null);
+          setIsCalepinageOpen(true);
+        }}
       />
 
       {/* Tiroir d'actions rapides (+) */}

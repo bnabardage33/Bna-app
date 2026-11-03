@@ -89,11 +89,11 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
     <>
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 text-white space-y-3.5 shadow-md">
         {/* EN-TÊTE ASSISTANT DE POSE BNA */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => setIsExpanded((prev) => !prev)}
-            className="flex items-center gap-2 text-left group flex-1 min-w-0"
+            className="flex items-center gap-2.5 text-left group flex-1 min-w-[200px]"
           >
             <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0">
               <HardHat className="w-4 h-4 text-bna-copper" />
@@ -102,10 +102,17 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
               <span className="text-[9px] font-bold tracking-wider text-slate-400 uppercase block">
                 INTELLIGENCE MÉTIER BNA
               </span>
-              <h3 className="text-xs font-bold text-white flex items-center gap-1.5 truncate group-hover:text-amber-300 transition-colors">
-                <span>Assistant de Pose · {chantier.metier === 'terrasse' ? 'Terrasse' : 'Bardage'}</span>
+              <h3 className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap group-hover:text-amber-300 transition-colors">
+                <span>
+                  Assistant de Pose ·{" "}
+                  {chantier.metier === 'terrasse'
+                    ? 'Terrasse'
+                    : chantier.metier === 'cloture'
+                    ? 'Clôture'
+                    : 'Bardage'}
+                </span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${
                     isExpanded ? 'rotate-180' : ''
                   }`}
                 />
@@ -115,7 +122,7 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
 
           {/* Badge statut global de pose */}
           <span
-            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${expertRules.statusBadge.bgClass} ${expertRules.statusBadge.borderClass} ${expertRules.statusBadge.textClass}`}
+            className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap ${expertRules.statusBadge.bgClass} ${expertRules.statusBadge.borderClass} ${expertRules.statusBadge.textClass}`}
           >
             {expertRules.statusBadge.label}
           </span>
@@ -151,8 +158,8 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
 
         {/* ALERTE CHARNIÈRE DE LA JOURNÉE (MATIN VS APRÈS-MIDI) - TOUJOURS VISIBLE */}
         {expertRules.horaireCharniere ? (
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1">
-            <div className="flex items-center justify-between gap-2">
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
                 <Umbrella className="w-4 h-4 shrink-0 text-amber-400 animate-bounce" />
                 <span>HORAIRE CHARNIÈRE : {expertRules.horaireCharniere.heure}</span>
@@ -160,20 +167,20 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAttestationOpen(true)}
-                className="text-[10px] font-extrabold text-amber-300 underline hover:text-white"
+                className="text-[10px] font-extrabold text-amber-300 underline hover:text-white shrink-0"
               >
                 Attestation légale
               </button>
             </div>
-            <p className="text-[11px] text-amber-200/90 leading-tight">
+            <p className="text-[11px] text-amber-200/90 leading-relaxed">
               {expertRules.horaireCharniere.action}
             </p>
           </div>
         ) : (
-          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-2 text-xs text-emerald-300">
+          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-300">
             <div className="flex items-center gap-2 min-w-0">
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="truncate">Journée continue : pose extérieure sans rupture majeure.</span>
+              <span className="leading-snug">Journée continue : pose extérieure sans rupture majeure.</span>
             </div>
             <button
               type="button"
@@ -189,39 +196,41 @@ export const AssistantPosePanel: React.FC<AssistantPosePanelProps> = ({
         {isExpanded && (
           <div className="space-y-3 pt-1 border-t border-slate-800/80 animate-in fade-in duration-150">
             {/* CHRONOLOGIE OPÉRATIONNELLE DE LA JOURNÉE */}
-        {expertRules.creneaux.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <Clock className="w-3 h-3 text-bna-copper" />
-              <span>Créneaux Horaires Opérationnels</span>
-            </div>
-
-            <div className="space-y-1.5">
-              {expertRules.creneaux.map((slot, idx) => (
-                <div
-                  key={idx}
-                  className={`p-2 rounded-xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1 ${
-                    slot.status === 'interruption'
-                      ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                      : slot.status === 'vigilance'
-                      ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
-                      : 'bg-slate-800/60 border-slate-700/80 text-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-white shrink-0">
-                      {slot.startFormatted} - {slot.endFormatted}
-                    </span>
-                    <span className="font-semibold text-xs">{slot.activiteConseillee}</span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 truncate pl-2 sm:pl-0">
-                    {slot.consigne}
-                  </span>
+            {expertRules.creneaux.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <Clock className="w-3 h-3 text-bna-copper" />
+                  <span>Créneaux Horaires Opérationnels</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+
+                <div className="space-y-2">
+                  {expertRules.creneaux.map((slot, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-2.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+                        slot.status === 'interruption'
+                          ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                          : slot.status === 'vigilance'
+                          ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                          : 'bg-slate-800/60 border-slate-700/80 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2 min-w-0">
+                        <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700 text-white shrink-0 whitespace-nowrap">
+                          {slot.startFormatted} - {slot.endFormatted}
+                        </span>
+                        <span className="font-semibold text-xs leading-snug">
+                          {slot.activiteConseillee}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-300/90 leading-snug w-full sm:w-auto">
+                        {slot.consigne}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
         {/* RÈGLES DE POSE EXPERT DTU & MATIÈRE */}
         <div className="p-3 bg-slate-800/80 border border-slate-700/80 rounded-xl space-y-2 text-xs">
