@@ -6,6 +6,9 @@ import {
   categorizeNature,
   NATURES_CONFIG,
   updateChantierDates,
+  dismissPlanningItem,
+  getDismissedPlanningIds,
+  resetDismissedPlanning,
 } from "./planningService.ts";
 import {
   creerRendezVous,
@@ -150,8 +153,55 @@ async function testRdvCrud() {
   await supprimerRendezVous(null, newRdv.id);
   const listAfterDelete = await getRendezVous(null);
   assert(!listAfterDelete.some((r) => r.id === newRdv.id), "6.F: RDV supprimé avec succès");
+
+  // 6.G: Test suppression avec id préfixé rdv-
+  const rdv2 = await creerRendezVous(null, {
+    titre: "Second RDV",
+    nature: "Test préfixe",
+    date: "2026-11-15",
+    heure_debut: "10:00",
+  });
+  await supprimerRendezVous(null, `rdv-${rdv2.id}`);
+  const listAfterDeletePrefix = await getRendezVous(null);
+  assert(!listAfterDeletePrefix.some((r) => r.id === rdv2.id), "6.G: RDV supprimé via ID préfixé rdv-");
 }
 
 await testRdvCrud();
+
+// 7. Tests Suppression et Filtrage Réactif des Éléments (RDV, Jalon, Livraison)
+console.log("\n--- Tests Suppression Réactive & Persistance Planning ---");
+resetDismissedPlanning();
+
+const itemsAvantSuppression = buildUnifiedPlanning(mockChantiers, mockCommandes, mockRdvs);
+const initialTotal = itemsAvantSuppression.length;
+const initialRdvs = itemsAvantSuppression.filter((i) => i.type === "rdv").length;
+const initialCommandes = itemsAvantSuppression.filter((i) => i.type === "commande" || i.type === "livraison").length;
+
+// A. Suppression par filtering du state avec item.id
+const rdvItem = itemsAvantSuppression.find((i) => i.type === "rdv")!;
+assert(Boolean(rdvItem && rdvItem.id), "7.A: L'élément RDV possède bien un identifiant unique (item.id)");
+
+const stateApresSupprRdv = itemsAvantSuppression.filter((it) => it.id !== rdvItem.id);
+assert(stateApresSupprRdv.length === initialTotal - 1, "7.B: Le tableau filtré a décrémenté son total de 1");
+assert(
+  stateApresSupprRdv.filter((i) => i.type === "rdv").length === initialRdvs - 1,
+  "7.C: Le compteur spécifique aux RDVs a décrémenté en temps réel"
+);
+
+// B. Suppression / exclusion persistante d'une livraison
+const livItem = itemsAvantSuppression.find((i) => i.type === "livraison")!;
+assert(Boolean(livItem && livItem.id), "7.D: L'élément livraison possède un identifiant unique (liv-...)");
+
+dismissPlanningItem(livItem.id);
+assert(getDismissedPlanningIds().includes(livItem.id), "7.E: L'identifiant de livraison est persisté dans les éléments exclus");
+
+const planningReconstruit = buildUnifiedPlanning(mockChantiers, mockCommandes, mockRdvs);
+assert(!planningReconstruit.some((i) => i.id === livItem.id), "7.F: La livraison supprimée n'apparaît plus dans le planning unifié");
+assert(
+  planningReconstruit.filter((i) => i.type === "commande" || i.type === "livraison").length === initialCommandes - 1,
+  "7.G: Le compteur global commandes/livraisons reste décrémenté après reconstruction"
+);
+
+resetDismissedPlanning();
 
 console.log(`\n🎉 TOUS LES TESTS PLANNING V1 & V2 SONT VALIDÉS (${passed} assertions) !`);

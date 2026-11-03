@@ -92,9 +92,9 @@ function getLocalRdvs(): RendezVous[] {
   if (typeof window === "undefined") return memoryRdvs;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
+    if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
@@ -260,19 +260,22 @@ export async function creerRendezVous(
 }
 
 /**
- * Supprime un rendez-vous.
+ * Supprime un rendez-vous (supporte aussi bien l'id brut que le préfixe rdv-).
  */
 export async function supprimerRendezVous(
   supabase: SupabaseClient | null | undefined,
   id: string
 ): Promise<void> {
   const current = getLocalRdvs();
-  const filtered = current.filter((r) => r.id !== id);
+  const rawId = id.startsWith("rdv-") ? id.replace(/^rdv-/, "") : id;
+  const filtered = current.filter(
+    (r) => r.id !== id && r.id !== rawId && `rdv-${r.id}` !== id
+  );
   saveLocalRdvs(filtered);
 
   if (supabase) {
     try {
-      await supabase.from("rendez_vous").delete().eq("id", id);
+      await supabase.from("rendez_vous").delete().or(`id.eq.${id},id.eq.${rawId}`);
     } catch {
       // ignorer
     }
@@ -288,10 +291,11 @@ export async function updateRendezVous(
   patch: Partial<RendezVous>
 ): Promise<RendezVous | null> {
   const current = getLocalRdvs();
+  const rawId = id.startsWith("rdv-") ? id.replace(/^rdv-/, "") : id;
   let updatedRdv: RendezVous | null = null;
 
   const nextList = current.map((r) => {
-    if (r.id === id) {
+    if (r.id === id || r.id === rawId || `rdv-${r.id}` === id) {
       updatedRdv = { ...r, ...patch };
       return updatedRdv;
     }
@@ -313,7 +317,7 @@ export async function updateRendezVous(
           statut: (updatedRdv as RendezVous).statut,
           lieu: (updatedRdv as RendezVous).lieu,
         })
-        .eq("id", id);
+        .or(`id.eq.${id},id.eq.${rawId}`);
     } catch {
       // ignorer
     }

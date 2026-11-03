@@ -250,13 +250,69 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const PLANNING_DISMISSED_KEY = "bna_planning_dismissed_v1";
+let memoryDismissedPlanningIds: string[] = [];
+
+/**
+ * Récupère les identifiants d'éléments de planning masqués ou supprimés.
+ */
+export function getDismissedPlanningIds(): string[] {
+  if (typeof window === "undefined") return memoryDismissedPlanningIds;
+  try {
+    const raw = localStorage.getItem(PLANNING_DISMISSED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignorer
+  }
+  return [];
+}
+
+/**
+ * Enregistre un élément du planning comme masqué/supprimé dans le stockage persistant.
+ */
+export function dismissPlanningItem(id: string): void {
+  if (typeof window === "undefined") {
+    if (!memoryDismissedPlanningIds.includes(id)) {
+      memoryDismissedPlanningIds.push(id);
+    }
+    return;
+  }
+  try {
+    const current = getDismissedPlanningIds();
+    if (!current.includes(id)) {
+      localStorage.setItem(PLANNING_DISMISSED_KEY, JSON.stringify([...current, id]));
+    }
+  } catch {
+    // ignorer
+  }
+}
+
+/**
+ * Réinitialise la liste des éléments masqués (utile pour les tests ou restauration).
+ */
+export function resetDismissedPlanning(): void {
+  memoryDismissedPlanningIds = [];
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(PLANNING_DISMISSED_KEY);
+    } catch {
+      // ignorer
+    }
+  }
+}
+
 /**
  * Construit la liste unifiée des éléments du planning général à partir des chantiers, commandes et RDVs.
+ * Filtre automatiquement les éléments supprimés / masqués.
  */
 export function buildUnifiedPlanning(
   chantiers: Chantier[],
   commandes: CommandeAvecFournisseur[],
-  rdvs: RendezVous[]
+  rdvs: RendezVous[],
+  dismissedIds?: string[]
 ): UnifiedPlanningItem[] {
   const items: UnifiedPlanningItem[] = [];
 
@@ -365,8 +421,22 @@ export function buildUnifiedPlanning(
     }
   }
 
+  // Filtrer les éléments supprimés ou masqués
+  const dismissed =
+    dismissedIds !== undefined
+      ? dismissedIds
+      : typeof window !== "undefined"
+      ? getDismissedPlanningIds()
+      : memoryDismissedPlanningIds;
+
+  const dismissedSet = new Set(dismissed);
+  const activeItems =
+    dismissed.length > 0
+      ? items.filter((item) => !dismissedSet.has(item.id))
+      : items;
+
   // Tri chronologique
-  return items.sort((a, b) => {
+  return activeItems.sort((a, b) => {
     const cmpDate = a.dateDebut.localeCompare(b.dateDebut);
     if (cmpDate !== 0) return cmpDate;
     return a.titre.localeCompare(b.titre);

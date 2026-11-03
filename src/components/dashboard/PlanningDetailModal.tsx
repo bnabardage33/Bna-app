@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Calendar,
   Clock,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import {
   NATURES_CONFIG,
+  dismissPlanningItem,
   type UnifiedPlanningItem,
 } from "@/lib/services/planningService";
 import type { RendezVous } from "@/lib/services/rendezVousService";
@@ -35,6 +36,7 @@ interface PlanningDetailModalProps {
   ganttDefinition?: string;
   onOpenNewRdv: () => void;
   onRefresh: () => void;
+  onDelete?: (id: string) => void;
 }
 
 export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
@@ -45,14 +47,23 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
   ganttDefinition,
   onOpenNewRdv,
   onRefresh,
+  onDelete,
 }) => {
   const supabase = createClient();
   const [filterType, setFilterType] = useState<"tous" | "rdv" | "chantier" | "commande">("tous");
   const [vueMode, setVueMode] = useState<"timeline" | "gantt">("timeline");
 
+  // State local réactif pour mise à jour immédiate à la suppression et décrémentation des compteurs
+  const [localItems, setLocalItems] = useState<UnifiedPlanningItem[]>(items);
+
+  // Synchronisation avec les props quand le parent rafraîchit les données
+  useEffect(() => {
+    setLocalItems(items);
+  }, [items]);
+
   if (!isOpen) return null;
 
-  const filteredItems = items.filter((it) => {
+  const filteredItems = localItems.filter((it) => {
     if (filterType === "tous") return true;
     if (filterType === "rdv") return it.type === "rdv";
     if (filterType === "chantier") return it.type === "chantier";
@@ -60,20 +71,59 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
     return true;
   });
 
-  const countRdvs = items.filter((i) => i.type === "rdv").length;
-  const countChantiers = items.filter((i) => i.type === "chantier").length;
-  const countCommandes = items.filter((i) => i.type === "commande" || i.type === "livraison").length;
+  const countRdvs = localItems.filter((i) => i.type === "rdv").length;
+  const countChantiers = localItems.filter((i) => i.type === "chantier").length;
+  const countCommandes = localItems.filter((i) => i.type === "commande" || i.type === "livraison").length;
 
-  const handleDeleteRdv = async (rdvId: string) => {
-    if (confirm("Supprimer ce rendez-vous du planning ?")) {
-      await supprimerRendezVous(supabase, rdvId);
-      onRefresh();
+  /**
+   * Suppression immédiate et persistante d'un élément du planning (RDV, Jalon, Livraison ou Commande)
+   */
+  const handleDeleteItem = async (itemId: string) => {
+    if (!confirm("Voulez-vous supprimer cet élément du planning ?")) {
+      return;
     }
+
+    // 1. Filtrage optimiste immédiat du state local pour faire disparaître la carte
+    // et décrémenter instantanément le compteur
+    setLocalItems((prev) => prev.filter((it) => it.id !== itemId));
+
+    // 2. Notification au parent via la callback onDelete si fournie
+    onDelete?.(itemId);
+
+    // 3. Persistance dans le stockage (rendezVousService ou exclusion planning)
+    try {
+      const target = localItems.find((it) => it.id === itemId);
+      if (target?.type === "rdv") {
+        const rawRdvId = itemId.startsWith("rdv-") ? itemId.replace(/^rdv-/, "") : itemId;
+        await supprimerRendezVous(supabase, rawRdvId);
+      }
+      dismissPlanningItem(itemId);
+    } catch (err) {
+      console.error("Erreur lors de la suppression de l'élément du planning:", err);
+    }
+
+    // 4. Déclencher le rafraîchissement global en arrière-plan
+    onRefresh();
   };
 
-  const handleToggleRdvStatut = async (rdvId: string, currentStatut: string) => {
+  const handleToggleRdvStatut = async (itemId: string, currentStatut: string) => {
     const nextStatut = currentStatut === "effectue" ? "planifie" : "effectue";
-    await updateRendezVous(supabase, rdvId, { statut: nextStatut });
+    const rawRdvId = itemId.startsWith("rdv-") ? itemId.replace(/^rdv-/, "") : itemId;
+
+    // Mise à jour optimiste immédiate dans le state local
+    setLocalItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? {
+              ...it,
+              statut: nextStatut,
+              statutLabel: nextStatut === "effectue" ? "Effectué" : "Planifié",
+            }
+          : it
+      )
+    );
+
+    await updateRendezVous(supabase, rawRdvId, { statut: nextStatut });
     onRefresh();
   };
 
@@ -125,7 +175,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
                 DASHBOARD CENTRALISÉ
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
-                {items.length} jalons
+                {localItems.length} {localItems.length <= 1 ? "jalon" : "jalons"}
               </span>
             </div>
             <h3 className="text-base font-bold text-bna-anthracite">
@@ -155,15 +205,15 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
         <div className="px-4 py-2.5 bg-neutral-50 border-b border-bna-border flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-3 text-bna-muted">
             <span>
-              <b className="text-bna-anthracite">{countChantiers}</b> chantiers
+              <b className="text-bna-anthracite">{countChantiers}</b> {countChantiers <= 1 ? "chantier" : "chantiers"}
             </span>
             <span>·</span>
             <span>
-              <b className="text-bna-anthracite">{countRdvs}</b> rendez-vous
+              <b className="text-bna-anthracite">{countRdvs}</b> {countRdvs <= 1 ? "rendez-vous" : "rendez-vous"}
             </span>
             <span>·</span>
             <span>
-              <b className="text-bna-anthracite">{countCommandes}</b> commandes &amp; livraisons
+              <b className="text-bna-anthracite">{countCommandes}</b> {countCommandes <= 1 ? "commande & livraison" : "commandes & livraisons"}
             </span>
           </div>
 
@@ -196,7 +246,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
         {/* Barre de filtres par type */}
         <div className="px-4 py-2 bg-white border-b border-bna-border/80 flex items-center gap-1.5 overflow-x-auto text-xs">
           {[
-            { id: "tous", label: "Tous", count: items.length },
+            { id: "tous", label: "Tous", count: localItems.length },
             { id: "rdv", label: "Rendez-vous", count: countRdvs },
             { id: "chantier", label: "Chantiers & Étapes", count: countChantiers },
             { id: "commande", label: "Commandes & Livraisons", count: countCommandes },
@@ -227,7 +277,7 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
           {vueMode === "gantt" ? (
             <div className="space-y-3">
-              <BnaPlanningView items={items} />
+              <BnaPlanningView items={localItems} />
             </div>
           ) : (
             <div className="space-y-3">
@@ -245,7 +295,6 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
               ) : (
                 filteredItems.map((it) => {
                   const isRdv = it.type === "rdv";
-                  const rawRdvId = it.id.replace("rdv-", "");
 
                   return (
                     <div
@@ -309,13 +358,13 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
                         </div>
                       )}
 
-                      {/* Actions spécifiques pour les Rendez-vous */}
-                      {isRdv && (
-                        <div className="flex items-center justify-between pt-1 border-t border-bna-border/50 text-[11px]">
+                      {/* Actions en bas de carte : Statut & Bouton Supprimer */}
+                      <div className="flex items-center justify-between pt-2 border-t border-bna-border/50 text-[11px]">
+                        {isRdv ? (
                           <button
                             type="button"
-                            onClick={() => handleToggleRdvStatut(rawRdvId, it.statut)}
-                            className="inline-flex items-center gap-1 font-bold text-slate-700 hover:text-emerald-700"
+                            onClick={() => handleToggleRdvStatut(it.id, it.statut)}
+                            className="inline-flex items-center gap-1 font-bold text-slate-700 hover:text-emerald-700 active:scale-95 transition-all"
                           >
                             <CheckCircle2
                               className={`w-3.5 h-3.5 ${
@@ -328,17 +377,22 @@ export const PlanningDetailModal: React.FC<PlanningDetailModalProps> = ({
                                 : "Marquer comme fait"}
                             </span>
                           </button>
+                        ) : (
+                          <span className="text-[10px] text-bna-muted font-medium">
+                            {it.chantierNom || it.sousTitre || it.statutLabel}
+                          </span>
+                        )}
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteRdv(rawRdvId)}
-                            className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-semibold"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Supprimer</span>
-                          </button>
-                        </div>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteItem(it.id)}
+                          className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 font-semibold px-2 py-1 rounded-lg hover:bg-red-50 transition-colors active:scale-95"
+                          title="Supprimer du planning"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Supprimer</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })

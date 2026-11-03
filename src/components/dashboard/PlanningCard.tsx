@@ -17,6 +17,7 @@ import type { Chantier } from "@/types/metier";
 import {
   buildUnifiedPlanning,
   NATURES_CONFIG,
+  getDismissedPlanningIds,
   type UnifiedPlanningItem,
 } from "@/lib/services/planningService";
 import { getRendezVous, type RendezVous } from "@/lib/services/rendezVousService";
@@ -43,9 +44,15 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
   const supabase = createClient();
   const [rdvs, setRdvs] = useState<RendezVous[]>([]);
   const [commandes, setCommandes] = useState<CommandeAvecFournisseur[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const [isNewRdvOpen, setIsNewRdvOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Synchronisation des exclusions / suppressions planning
+  useEffect(() => {
+    setDismissedIds(getDismissedPlanningIds());
+  }, [refreshKey]);
 
   // Chargement des RDVs et des Commandes Fournisseurs
   useEffect(() => {
@@ -72,8 +79,8 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
 
   // Construction de la liste unifiée
   const unifiedItems = useMemo(
-    () => buildUnifiedPlanning(chantiers, commandes, rdvs),
-    [chantiers, commandes, rdvs]
+    () => buildUnifiedPlanning(chantiers, commandes, rdvs, dismissedIds),
+    [chantiers, commandes, rdvs, dismissedIds]
   );
 
   // Prochains jalons immédiats (top 3)
@@ -240,6 +247,10 @@ export const PlanningCard: React.FC<PlanningCardProps> = ({
           setIsNewRdvOpen(true);
         }}
         onRefresh={() => setRefreshKey((k) => k + 1)}
+        onDelete={(deletedId) => {
+          setDismissedIds((prev) => (prev.includes(deletedId) ? prev : [...prev, deletedId]));
+          setRefreshKey((k) => k + 1);
+        }}
       />
     </section>
   );
