@@ -15,6 +15,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const isSupabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder")
+  );
+
   // Si l'utilisateur est déjà authentifié, redirection immédiate vers le dashboard
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -91,6 +96,18 @@ export default function LoginPage() {
               Connectez-vous pour piloter vos chantiers, consulter le planning centralisé et générer vos quantitatifs.
             </p>
           </div>
+
+          {!isSupabaseConfigured && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 mb-4 space-y-1">
+              <p className="font-bold flex items-center gap-1.5 text-amber-800">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                Variables Vercel non actives
+              </p>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                Le build actuel n&apos;a pas encore reçu vos variables Supabase. Allez sur Vercel &gt; Deployments &gt; cliquez sur les trois petits points &gt; <b>Redeploy</b> pour appliquer vos clés.
+              </p>
+            </div>
+          )}
 
           {/* Formulaire */}
           <form onSubmit={handleSubmit} className="space-y-4">
