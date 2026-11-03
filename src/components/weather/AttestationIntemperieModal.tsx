@@ -56,7 +56,7 @@ L'équipe BNA`;
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
     >
       <div
         className="w-full max-w-xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] border border-bna-border"

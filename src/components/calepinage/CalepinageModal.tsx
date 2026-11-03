@@ -154,9 +154,9 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div
-        className="w-full max-w-md md:max-w-5xl lg:max-w-6xl bg-slate-950 text-slate-100 rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-5 shadow-2xl border border-slate-800 animate-in slide-in-from-bottom duration-200"
+        className="w-full max-w-md md:max-w-5xl lg:max-w-6xl bg-slate-950 text-slate-100 rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-4 sm:p-5 pb-[max(6rem,calc(env(safe-area-inset-bottom)+4.5rem))] sm:pb-5 shadow-2xl border border-slate-800 animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -235,6 +235,7 @@ export const CalepinageModal: React.FC<CalepinageModalProps> = ({
         </div>
 
         {selectedMetier === "terrasse" && (
+          /* Bouton de validation 'Enregistrer le quantitatif' géré dans le panneau terrasse pro */
           <TerrasseCalepinagePanel
             chantierId={chantierId}
             entrepriseId={entreprise?.id}

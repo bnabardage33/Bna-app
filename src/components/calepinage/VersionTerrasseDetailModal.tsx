@@ -52,7 +52,7 @@ export const VersionTerrasseDetailModal: React.FC<VersionTerrasseDetailModalProp
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center pt-2 sm:pt-6 pb-20 sm:pb-8 px-3 sm:px-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] flex items-start justify-center pt-2 sm:pt-6 pb-24 sm:pb-8 px-3 sm:px-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
       onClick={(e) => {
         e.stopPropagation();
         onClose();

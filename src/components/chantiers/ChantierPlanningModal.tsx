@@ -193,7 +193,7 @@ export const ChantierPlanningModal: React.FC<ChantierPlanningModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+        className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-2 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-4 overflow-y-auto animate-in fade-in duration-150"
       >
         <div
           className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-bna-border overflow-hidden my-auto max-h-[96vh] flex flex-col"
@@ -475,7 +475,7 @@ export const ChantierPlanningModal: React.FC<ChantierPlanningModalProps> = ({
           </div>
 
           {/* FOOTER ACTIONS */}
-          <div className="p-3 bg-neutral-50 border-t border-bna-border flex items-center justify-between shrink-0">
+          <div className="p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-3 bg-neutral-50 border-t border-bna-border flex items-center justify-between shrink-0">
             <span className="text-[11px] text-bna-muted">
               Synchronisé en temps réel avec le planning général et les commandes fournisseurs.
             </span>

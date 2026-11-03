@@ -758,7 +758,7 @@ export const BnaPlanningView: React.FC<BnaPlanningViewProps> = ({
       {/* 4. MODAL DE DÉTAIL D'UN ÉLÉMENT (INTERACTIF AU CLIC)               */}
       {/* ------------------------------------------------------------------- */}
       {activeItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white border border-bna-border rounded-2xl max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-4">
             {/* Header modal */}
             <div className="flex items-start justify-between gap-3 border-b border-bna-border/80 pb-3">

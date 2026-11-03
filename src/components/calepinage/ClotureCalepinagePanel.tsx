@@ -1759,7 +1759,7 @@ export const ClotureCalepinagePanel: React.FC<ClotureCalepinagePanelProps> = ({
   };
 
   const containerClasses = isFullscreen
-    ? "fixed inset-0 z-[70] overflow-y-auto bg-slate-950 text-slate-100 p-4 sm:p-6"
+    ? "fixed inset-0 z-[70] overflow-y-auto bg-slate-950 text-slate-100 p-4 pb-24 sm:p-6"
     : "mt-4 rounded-2xl bg-slate-950 text-slate-100 border border-slate-800 p-3.5 sm:p-5 shadow-2xl";
 
   return (

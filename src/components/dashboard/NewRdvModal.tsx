@@ -136,7 +136,7 @@ export const NewRdvModal: React.FC<NewRdvModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150"
+      className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-3 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-4 overflow-y-auto animate-in fade-in duration-150"
     >
       <div
         className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-bna-border overflow-hidden my-auto max-h-[95vh] flex flex-col"

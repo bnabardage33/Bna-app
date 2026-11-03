@@ -162,9 +162,9 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-150">
+      <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-150">
         <div
-          className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-bna-border max-h-[92vh] flex flex-col animate-in slide-in-from-bottom duration-200"
+          className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-5 shadow-2xl border border-bna-border max-h-[92vh] flex flex-col animate-in slide-in-from-bottom duration-200"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -232,7 +232,7 @@ export const CorbeilleModal: React.FC<CorbeilleModalProps> = ({
           )}
 
           {/* Contenu défilable */}
-          <div className="flex-1 overflow-y-auto pt-3 space-y-2.5 pr-1">
+          <div className="flex-1 overflow-y-auto pt-3 pb-6 space-y-2.5 pr-1">
             {loading ? (
               <p className="text-xs text-bna-muted text-center py-6">Chargement de la corbeille...</p>
             ) : null}

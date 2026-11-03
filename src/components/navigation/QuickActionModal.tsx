@@ -104,9 +104,9 @@ export const QuickActionModal: React.FC<QuickActionModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div
-        className="w-full max-w-mobile bg-white rounded-t-3xl p-5 shadow-2xl border-t border-bna-border pb-8 animate-in slide-in-from-bottom duration-200"
+        className="w-full max-w-mobile bg-white rounded-t-3xl p-5 pb-[max(2.5rem,calc(env(safe-area-inset-bottom)+1.5rem))] shadow-2xl border-t border-bna-border animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">

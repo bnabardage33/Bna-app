@@ -50,9 +50,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
       <div
-        className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl border border-bna-border animate-in slide-in-from-bottom duration-200"
+        className="w-full max-w-mobile bg-white rounded-t-3xl sm:rounded-2xl p-6 pb-[max(2rem,calc(env(safe-area-inset-bottom)+1.25rem))] sm:pb-6 shadow-2xl border border-bna-border animate-in slide-in-from-bottom duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between pb-3 border-b border-bna-border/60">

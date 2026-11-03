@@ -26,8 +26,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 }) => {
   return (
     <>
-      {/* NAVIGATION MOBILE (< md) : Bottom Navigation Bar fixe en bas (100% préservée) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-bna-border">
+      {/* NAVIGATION MOBILE (< md) : Bottom Navigation Bar fixe en bas (100% préservée, z-40 sous les modales) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-bna-border">
         <div className="max-w-md mx-auto flex items-center justify-between px-2 pt-1 pb-[max(8px,env(safe-area-inset-bottom))] h-[72px]">
           {/* Accueil */}
           <button
@@ -107,8 +107,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         </div>
       </nav>
 
-      {/* NAVIGATION DESKTOP (md: et plus) : Barre supérieure horizontale pro */}
-      <nav className="hidden md:block fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-bna-border shadow-sm">
+      {/* NAVIGATION DESKTOP (md: et plus) : Barre supérieure horizontale pro (z-40 sous les modales) */}
+      <nav className="hidden md:block fixed top-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-b border-bna-border shadow-sm">
         <div className="w-full max-w-5xl lg:max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           {/* Logo BNA à gauche */}
           <button

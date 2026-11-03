@@ -316,7 +316,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-white border border-bna-border rounded-3xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
         {/* ----------------------------------------------------------------- */}
         {/* 1. EN-TÊTE DU MODAL                                               */}
@@ -776,7 +776,7 @@ export const PhotoConstatModal: React.FC<PhotoConstatModalProps> = ({
       {/* 5. VISIONNEUSE PLEIN ÉCRAN / LIGHTBOX AU CLIC SUR UN CLICHÉ        */}
       {/* ------------------------------------------------------------------- */}
       {activePhoto && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 pb-[max(1.5rem,calc(env(safe-area-inset-bottom)+1rem))] sm:p-6 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             {/* Header Lightbox */}
             <div className="p-3.5 bg-neutral-900 text-white flex items-center justify-between">
