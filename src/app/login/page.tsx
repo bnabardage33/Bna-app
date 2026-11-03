@@ -40,10 +40,14 @@ export default function LoginPage() {
       console.error("Erreur de connexion :", err);
       let msg = "Identifiants invalides ou service d'authentification inaccessible";
       if (err instanceof Error) {
+        const lower = err.message.toLowerCase();
         if (err.message.includes("Invalid login credentials")) {
           msg = "Identifiants invalides : l'email ou le mot de passe est incorrect.";
         } else if (err.message.includes("Email not confirmed")) {
           msg = "Email non confirmé : Allez dans Supabase (Authentication > Users), cliquez sur '...' en face de votre utilisateur et choisissez 'Confirm user'.";
+        } else if (lower.includes("fetch") || lower.includes("récupération") || lower.includes("failed")) {
+          const currentUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "NON DÉFINIE";
+          msg = `Échec de connexion au serveur Supabase (URL active : ${currentUrl}). Vérifiez vos variables sur Vercel et relancez un déploiement.`;
         } else {
           msg = `Erreur Supabase : ${err.message}`;
         }
