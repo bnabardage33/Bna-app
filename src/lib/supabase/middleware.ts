@@ -61,7 +61,27 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  const isLoginPage = pathname === "/login";
+  const isPublicApi = pathname.startsWith("/api");
+
+  // Si l'utilisateur n'est pas connecté et tente d'accéder à l'application protégée
+  if (!user && !isLoginPage && !isPublicApi) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Si l'utilisateur est déjà connecté et tente d'accéder à la page de connexion
+  if (user && isLoginPage) {
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = "/";
+    return NextResponse.redirect(dashboardUrl);
+  }
 
   return response;
 }

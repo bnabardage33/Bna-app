@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/dashboard/Header";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
 import { PlanningCard } from "@/components/dashboard/PlanningCard";
@@ -12,7 +13,7 @@ import { QuickActionModal } from "@/components/navigation/QuickActionModal";
 import { CalepinageModal } from "@/components/calepinage/CalepinageModal";
 import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
-import { AuthModal } from "@/components/auth/AuthModal";
+import { AccountModal } from "@/components/auth/AccountModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
 import { ChantierCard } from "@/components/chantiers/ChantierCard";
 import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
@@ -27,14 +28,15 @@ import { useAuth } from "@/lib/auth/useAuth";
 import { HardHat, Users, Trash2, FileText, Sparkles, Plus } from "lucide-react";
 
 export default function HomePage() {
-  const { user, profil } = useAuth();
+  const router = useRouter();
+  const { user, profil, loading: authLoading, isAuthenticated } = useAuth();
   const [currentTab, setCurrentTab] = useState("accueil");
   const [chantiersSubTab, setChantiersSubTab] = useState<"chantiers" | "clients">("chantiers");
 
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [isCalepinageOpen, setIsCalepinageOpen] = useState(false);
   const [calepinageSourceVersion, setCalepinageSourceVersion] = useState<CalepinageVersionItem | null>(null);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isNewChantierOpen, setIsNewChantierOpen] = useState(false);
   const [isCorbeilleOpen, setIsCorbeilleOpen] = useState(false);
   const [isQuickPhotoOpen, setIsQuickPhotoOpen] = useState(false);
@@ -64,6 +66,13 @@ export default function HomePage() {
     refreshChantiers();
   }, [user]);
 
+  // Protection de route : redirection immédiate vers /login si l'utilisateur n'est pas connecté
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
   const handleSoftDeleteChantier = async (chantierId: string) => {
     try {
       if (!isUuid(chantierId)) {
@@ -91,6 +100,26 @@ export default function HomePage() {
 
   const displayName = profil?.prenom || (user?.email ? user.email.split("@")[0] : "");
 
+  // Écran d'attente lors de la vérification de session
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-bna-offwhite flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3 animate-in fade-in duration-200">
+          <div className="font-display font-black text-3xl tracking-tighter text-bna-anthracite">
+            BN<span className="text-bna-copper">A</span>
+          </div>
+          <div className="w-8 h-8 border-3 border-bna-copper/20 border-t-bna-copper rounded-full animate-spin" />
+          <p className="text-xs font-semibold text-bna-muted">Chargement de votre espace BNA...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Si non connecté, bloquer l'affichage du dashboard pendant la redirection vers /login
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-bna-offwhite text-bna-anthracite flex flex-col justify-between">
       {/* Conteneur adaptatif : Mobile (< md) max-w-md inchangé | Desktop (md: / lg:) max-w-5xl / max-w-7xl avec md:pt-24 sous la navbar fixe h-16 */}
@@ -101,7 +130,7 @@ export default function HomePage() {
             <Header
               userName={displayName}
               currentDate="Jeudi 29 octobre"
-              onOpenAuth={() => setIsAuthOpen(true)}
+              onOpenAuth={() => setIsAccountOpen(true)}
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -379,10 +408,10 @@ export default function HomePage() {
         }}
       />
 
-      {/* Modal Authentification Supabase */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
+      {/* Modal Compte & Profil de session */}
+      <AccountModal
+        isOpen={isAccountOpen}
+        onClose={() => setIsAccountOpen(false)}
       />
 
       {/* Modal Nouveau Chantier Supabase (Tunnel 4 étapes) */}
