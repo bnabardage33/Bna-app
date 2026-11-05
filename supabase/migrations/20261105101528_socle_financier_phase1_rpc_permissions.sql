@@ -1,0 +1,12 @@
+REVOKE ALL ON FUNCTION public.allouer_numero_financier(text,date) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.proteger_document_financier_emis() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.creer_devis_financier(jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.emettre_facture_financiere(jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.emettre_avoir_financier(jsonb) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.marquer_devis_signe(uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.supprimer_devis_brouillon(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.creer_devis_financier(jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.emettre_facture_financiere(jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.emettre_avoir_financier(jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.marquer_devis_signe(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.supprimer_devis_brouillon(uuid) TO authenticated;

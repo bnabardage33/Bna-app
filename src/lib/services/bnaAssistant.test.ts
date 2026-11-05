@@ -10,8 +10,6 @@ import {
   calculerDevis,
   calculerMontantsFacture,
   calculerBilanFinancierGlobal,
-  getDevisList,
-  getFacturesList,
 } from "./devisFinanceService.ts";
 import {
   getPvReceptions,
@@ -197,8 +195,61 @@ assert(calcFac.montant_retenue_ttc === 275, "5.F: Retenue de garantie 5% (Loi 71
 assert(calcFac.net_a_payer_ttc === 5225, "5.G: Net à payer TTC après retenue 5% = 5225 €");
 
 // 6. Test Intégration Finances <-> Assistant IA Central
-mockContext.devis = getDevisList();
-mockContext.factures = getFacturesList();
+mockContext.devis = [
+  {
+    id: "test-devis-signe",
+    numero: "DEVIS-TEST-000001",
+    entreprise_id: "entreprise-test",
+    client_id: "client-test",
+    chantier_id: "chantier-test",
+    chantier_nom: "Chantier de test",
+    client_nom: "Client de test",
+    ville: "Mérignac",
+    metier: "terrasse",
+    objet: "Fixture financière assistant",
+    statut: "signe",
+    date_creation: "2026-01-01",
+    date_validite: "2026-01-31",
+    tva_pct: 20,
+    acompte_pct: 30,
+    retenue_garantie_pct: 0,
+    lignes: [{
+      id: "test-ligne-devis",
+      designation: "Travaux de test",
+      qte: 1,
+      unite: "forfait",
+      pu_ht: 25000,
+      pu_revient: 15000,
+      type_cout: "matiere",
+      tva_pct: 20,
+    }],
+  },
+];
+mockContext.factures = [
+  {
+    id: "test-facture-retard",
+    numero: "FAC-2026-0086",
+    devis_id: "test-devis-signe",
+    devis_numero: "DEVIS-TEST-000001",
+    chantier_id: "chantier-test",
+    chantier_nom: "Chantier de test",
+    client_nom: "Client de test",
+    type: "acompte",
+    statut: "en_retard",
+    date_emission: "2026-10-01",
+    date_echeance: "2026-10-15",
+    tva_pct: 20,
+    retenue_garantie_pct: 0,
+    avancement_pct: undefined,
+    montant_ht: 1000,
+    montant_tva: 200,
+    montant_ttc: 1200,
+    montant_retenue_ttc: 0,
+    net_a_payer_ttc: 1200,
+    objet: "Facture de test en retard",
+    lignes: [],
+  },
+];
 const bilan = calculerBilanFinancierGlobal(mockContext.devis, mockContext.factures);
 assert(bilan.ca_signe_ht > 20000, "6.A: Bilan financier consolide le CA signé HT");
 assert(bilan.nb_factures_retard === 1, "6.B: Détection automatique de la facture en retard (Clôture Bernard)");

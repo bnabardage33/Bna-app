@@ -31,9 +31,8 @@ import {
   updateStatutDevis,
   supprimerDevis,
   creerFactureDepuisDevis,
-  updateStatutFacture,
-  supprimerFacture,
   calculerDevis,
+  montantHtLigneExact,
   calculerBilanFinancierGlobal,
   importerBesoinsCalepinageEnLignesDevis,
   fmtEuro,
@@ -110,14 +109,15 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const reloadData = () => {
-    setDevisList(getDevisList());
-    setFacturesList(getFacturesList());
+  const reloadData = async () => {
+    const [devis, factures] = await Promise.all([getDevisList(supabase), getFacturesList(supabase)]);
+    setDevisList(devis);
+    setFacturesList(factures);
   };
 
   useEffect(() => {
-    reloadData();
-  }, []);
+    void reloadData().catch((error: unknown) => showToast(error instanceof Error ? error.message : "Chargement financier impossible"));
+  }, [supabase]);
 
   // Charger les besoins de calepinage quand le chantier sélectionné change dans la modale
   useEffect(() => {
@@ -176,10 +176,16 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
     setLignesForm((prev) => prev.filter((l) => l.id !== id));
   };
 
-  const handleCreateDevisSubmit = (e: React.FormEvent) => {
+  const handleCreateDevisSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetChantier = chantiers.find((c) => c.id === selectedChantierId);
-    const created = creerNouveauDevis({
+    if (!targetChantier?.client_id) {
+      showToast("Le chantier sélectionné n'est pas rattaché à un client valide.");
+      return;
+    }
+    try {
+    const created = await creerNouveauDevis(supabase, {
+      client_id: targetChantier.client_id,
       chantier_id: targetChantier?.id,
       chantier_nom: targetChantier?.nom || clientNom || "Nouveau Projet BNA",
       client_nom: clientNom || "Client BNA",
@@ -192,21 +198,28 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
       retenue_garantie_pct: retenuePct,
       lignes: lignesForm,
     });
-    setDevisList(getDevisList());
+    await reloadData();
     setIsNewDevisOpen(false);
     showToast(`Devis ${created.numero} créé et prêt à être envoyé !`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Création du devis impossible");
+    }
   };
 
-  const handleGenerateFacture = (
+  const handleGenerateFacture = async (
     devis: DevisItem,
     type: "acompte" | "situation" | "solde"
   ) => {
     const linkedChantier = chantiers.find((c) => c.id === devis.chantier_id);
     const avancement = linkedChantier?.avancementGlobal || 50;
-    const fac = creerFactureDepuisDevis(devis, type, avancement);
-    setFacturesList(getFacturesList());
-    setSubTab("factures");
-    showToast(`Facture ${fac.numero} (${type.toUpperCase()}) générée avec succès !`);
+    try {
+      const fac = await creerFactureDepuisDevis(supabase, devis, type, avancement);
+      await reloadData();
+      setSubTab("factures");
+      showToast(`Facture ${fac.numero} (${type.toUpperCase()}) générée avec succès !`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Émission de la facture impossible");
+    }
   };
 
   const filteredDevis =
@@ -512,7 +525,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                         </div>
                         <span className="font-mono text-[11px] font-semibold text-slate-700 shrink-0">
                           {lig.qte} {lig.unite} × {fmtEuro(lig.pu_ht)} ={" "}
-                          <b>{fmtEuro(lig.qte * lig.pu_ht)} HT</b>
+                          <b>{fmtEuro(montantHtLigneExact(lig.qte, lig.pu_ht, lig.tva_pct ?? dev.tva_pct))} HT</b>
                         </span>
                       </div>
                     ))}
@@ -521,12 +534,16 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                   {/* Barre d'actions du Devis */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {dev.statut !== "signe" && (
+                      {dev.statut === "envoye" && (
                         <button
                           type="button"
-                          onClick={() => {
-                            setDevisList(updateStatutDevis(dev.id, "signe"));
-                            showToast(`Devis ${dev.numero} marqué comme SIGNÉ !`);
+                          onClick={async () => {
+                            try {
+                              setDevisList(await updateStatutDevis(supabase, dev.id, "signe"));
+                              showToast(`Devis ${dev.numero} marqué comme SIGNÉ !`);
+                            } catch (error) {
+                              showToast(error instanceof Error ? error.message : "Mise à jour du devis impossible");
+                            }
                           }}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
                         >
@@ -569,17 +586,21 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                         <Printer className="w-3.5 h-3.5" />
                         <span>Aperçu PDF Pro</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDevisList(supprimerDevis(dev.id));
-                          showToast(`Devis ${dev.numero} supprimé.`);
-                        }}
-                        className="p-1.5 text-bna-muted hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                        title="Supprimer ce devis"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {dev.statut === "brouillon" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void supprimerDevis(supabase, dev.id)
+                              .then(setDevisList)
+                              .then(() => showToast(`Devis ${dev.numero} supprimé.`))
+                              .catch((error: unknown) => showToast(error instanceof Error ? error.message : "Suppression impossible"));
+                          }}
+                          className="p-1.5 text-bna-muted hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                          title="Supprimer ce devis brouillon"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -598,6 +619,8 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
             const badgeColor =
               fac.statut === "payee"
                 ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                : fac.statut === "partiellement_payee"
+                ? "bg-amber-100 text-amber-800 border-amber-200"
                 : fac.statut === "en_retard"
                 ? "bg-rose-100 text-rose-800 border-rose-200"
                 : "bg-blue-100 text-blue-800 border-blue-200";
@@ -618,6 +641,8 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                       >
                         {fac.statut === "payee"
                           ? "✓ Payée / Encaissée"
+                          : fac.statut === "partiellement_payee"
+                          ? "Partiellement payée"
                           : fac.statut === "en_retard"
                           ? "⚠️ En retard d'échéance"
                           : "Émise — En attente"}
@@ -645,7 +670,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
 
                   <div className="text-right">
                     <p className="text-xs text-bna-muted">
-                      HT : <b>{fmtEuro(fac.montant_ht)}</b> · TVA ({fac.tva_pct}%) :{" "}
+                      HT : <b>{fmtEuro(fac.montant_ht)}</b> · TVA par ligne :{" "}
                       <b>{fmtEuro(fac.montant_tva)}</b>
                     </p>
                     {fac.montant_retenue_ttc > 0 && (
@@ -663,20 +688,6 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-bna-border/60">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {fac.statut !== "payee" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFacturesList(updateStatutFacture(fac.id, "payee"));
-                          showToast(`Facture ${fac.numero} pointée comme PAYÉE !`);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Pointer comme Payée</span>
-                      </button>
-                    )}
-
                     {fac.statut === "en_retard" && (
                       <button
                         type="button"
@@ -701,16 +712,6 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Aperçu Facture</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFacturesList(supprimerFacture(fac.id));
-                        showToast(`Facture ${fac.numero} supprimée.`);
-                      }}
-                      className="p-1.5 text-bna-muted hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -1154,7 +1155,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                               {fmtEuro(l.pu_ht)}
                             </td>
                             <td className="py-2.5 text-right font-bold whitespace-nowrap">
-                              {fmtEuro(l.qte * l.pu_ht)}
+                              {fmtEuro(montantHtLigneExact(l.qte, l.pu_ht, l.tva_pct ?? d.tva_pct))}
                             </td>
                           </tr>
                         ))}
@@ -1168,7 +1169,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                           <b>{fmtEuro(c.total_ht)}</b>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-bna-muted">TVA ({d.tva_pct}%) :</span>
+                          <span className="text-bna-muted">TVA par ligne :</span>
                           <b>{fmtEuro(c.total_tva)}</b>
                         </div>
                         <div className="flex justify-between text-sm font-black text-bna-anthracite pt-1 border-t border-bna-border">
@@ -1212,7 +1213,7 @@ export const DevisFinanceScreen: React.FC<DevisFinanceScreenProps> = ({
                         <b>{fmtEuro(f.montant_ht)}</b>
                       </div>
                       <div className="flex justify-between">
-                        <span>TVA ({f.tva_pct}%)</span>
+                        <span>TVA par ligne</span>
                         <b>{fmtEuro(f.montant_tva)}</b>
                       </div>
                       <div className="flex justify-between font-bold">

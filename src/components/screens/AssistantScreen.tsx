@@ -127,23 +127,18 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
 
   // Chargement du contexte complet (RDVs + Commandes fournisseurs + Devis & Factures)
   const loadOperationalContext = async () => {
-    try {
-      setDevis(getDevisList());
-      setFactures(getFacturesList());
-      const [loadedRdvs, loadedCmds] = await Promise.all([
-        getRendezVous(supabase),
-        getAllCommandes(supabase),
-      ]);
-      setRdvs(loadedRdvs);
-      setCommandes(loadedCmds);
-    } catch {
-      // Fallback silencieux
-    }
+    const [loadedDevis, loadedFactures, loadedRdvs, loadedCmds] = await Promise.all([
+      getDevisList(supabase), getFacturesList(supabase), getRendezVous(supabase), getAllCommandes(supabase),
+    ]);
+    setDevis(loadedDevis);
+    setFactures(loadedFactures);
+    setRdvs(loadedRdvs);
+    setCommandes(loadedCmds);
   };
 
   useEffect(() => {
-    loadOperationalContext();
-  }, []);
+    void loadOperationalContext().catch((error: unknown) => console.error("Chargement du contexte Supabase impossible", error));
+  }, [supabase]);
 
   // Chargement de l'historique local ou message d'accueil initial
   useEffect(() => {
@@ -317,8 +312,11 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
         const puPose = action.payload.devisPuPoseHt || 72;
         const metier = action.payload.metier || "terrasse";
 
-        creerNouveauDevis({
-          chantier_id: action.payload.chantierId,
+        const chantier = chantiers.find((item) => item.id === action.payload.chantierId);
+        if (!chantier?.client_id) throw new Error("Le chantier choisi n'a pas de client rattaché");
+        await creerNouveauDevis(supabase, {
+          client_id: chantier.client_id,
+          chantier_id: chantier.id,
           chantier_nom: action.payload.chantierNom || "Projet BNA",
           client_nom: action.payload.chantierNom
             ? `Client ${action.payload.chantierNom}`

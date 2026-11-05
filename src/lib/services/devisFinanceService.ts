@@ -11,12 +11,13 @@
  */
 
 import type { MetierType } from "@/types/metier";
-import type { BesoinMateriauRow } from "@/types/database.types";
+import type { AvoirFinanceRow, AvoirLigneFinanceRow, BesoinMateriauRow, CreditNoteInvoiceRow, Database, DevisFinanceRow, DevisLigneFinanceRow, FactureFinanceRow, FactureLigneFinanceRow } from "@/types/database.types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type TauxTvaBtp = 20 | 10 | 5.5 | 0;
 export type CoutType = "matiere" | "main_oeuvre";
-export type StatutDevis = "brouillon" | "envoye" | "signe" | "refuse";
-export type StatutFacture = "brouillon" | "emise" | "payee" | "en_retard" | "annulee";
+export type StatutDevis = "brouillon" | "envoye" | "signe" | "refuse" | "annule";
+export type StatutFacture = "brouillon" | "emise" | "partiellement_payee" | "payee" | "en_retard" | "annulee";
 export type TypeFacture = "acompte" | "situation" | "solde";
 
 export interface LigneChiffrage {
@@ -48,6 +49,8 @@ export interface CalculDevisResult {
 export interface DevisItem {
   id: string;
   numero: string;
+  client_id: string;
+  entreprise_id: string;
   chantier_id?: string;
   chantier_nom: string;
   client_nom: string;
@@ -77,6 +80,7 @@ export interface FactureItem {
   statut: StatutFacture;
   date_emission: string;
   date_echeance: string;
+  contract_ref?: string;
   tva_pct: TauxTvaBtp;
   retenue_garantie_pct: number;
   avancement_pct?: number;
@@ -86,6 +90,12 @@ export interface FactureItem {
   montant_retenue_ttc: number;
   net_a_payer_ttc: number;
   objet: string;
+  lignes: FactureLigneFinanceRow[];
+}
+
+export interface AvoirItem extends AvoirFinanceRow {
+  lignes: AvoirLigneFinanceRow[];
+  factures_rattachees: CreditNoteInvoiceRow[];
 }
 
 export interface BilanFinancierGlobal {
@@ -103,15 +113,108 @@ export interface BilanFinancierGlobal {
   taux_marge_moyen_pct: number;
 }
 
-const STORAGE_DEVIS_KEY = "bna_devis_items_v1";
-const STORAGE_FACTURES_KEY = "bna_factures_items_v1";
-
 /**
  * Arrondi monétaire déterministe au centime le plus proche (half-up)
  */
+function decimalToScaledInt(value: number | string, scale: number): bigint {
+  if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Montant non fini");
+  let source = String(value).trim();
+  const exponentMatch = /^([+-]?\d+(?:\.\d+)?)[eE]([+-]?\d+)$/.exec(source);
+  if (exponentMatch) {
+    const base = exponentMatch[1];
+    const exponent = Number(exponentMatch[2]);
+    const negative = base.startsWith("-");
+    const unsigned = base.replace(/^[+-]/, "");
+    const [whole, fraction = ""] = unsigned.split(".");
+    const digits = whole + fraction;
+    const point = whole.length + exponent;
+    source = `${negative ? "-" : ""}${point <= 0 ? `0.${"0".repeat(-point)}${digits}` : point >= digits.length ? `${digits}${"0".repeat(point - digits.length)}` : `${digits.slice(0, point)}.${digits.slice(point)}`}`;
+  }
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(source);
+  if (!match) throw new Error(`Nombre décimal invalide: ${source}`);
+  const sign = match[1] === "-" ? -1n : 1n;
+  const decimals = match[3] ?? "";
+  const kept = decimals.slice(0, scale).padEnd(scale, "0");
+  const discarded = decimals.slice(scale);
+  if (discarded && /[1-9]/.test(discarded)) throw new Error(`Précision supérieure à ${scale} décimales`);
+  const factor = 10n ** BigInt(scale);
+  return sign * (BigInt(match[2]) * factor + BigInt(kept || "0"));
+}
+
+function decimalToRoundedInt(value: number, scale: number): bigint {
+  if (!Number.isFinite(value)) throw new Error("Montant non fini");
+  let source = String(value);
+  const exponentMatch = /^([+-]?\d+(?:\.\d+)?)[eE]([+-]?\d+)$/.exec(source);
+  if (exponentMatch) {
+    const base = exponentMatch[1];
+    const exponent = Number(exponentMatch[2]);
+    const negative = base.startsWith("-");
+    const unsigned = base.replace(/^[+-]/, "");
+    const [whole, fraction = ""] = unsigned.split(".");
+    const digits = whole + fraction;
+    const point = whole.length + exponent;
+    source = `${negative ? "-" : ""}${point <= 0 ? `0.${"0".repeat(-point)}${digits}` : point >= digits.length ? `${digits}${"0".repeat(point - digits.length)}` : `${digits.slice(0, point)}.${digits.slice(point)}`}`;
+  }
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(source);
+  if (!match) throw new Error("Nombre décimal invalide");
+  const sign = match[1] === "-" ? -1n : 1n;
+  const fraction = match[3] ?? "";
+  const kept = fraction.slice(0, scale).padEnd(scale, "0");
+  const dropped = fraction.slice(scale);
+  let magnitude = BigInt(match[2]) * 10n ** BigInt(scale) + BigInt(kept || "0");
+  if (dropped[0] && dropped[0] >= "5") magnitude += 1n;
+  return sign * magnitude;
+}
+
+function decimalDepuisEchelle(value: bigint, scale: number): string {
+  const negative = value < 0n;
+  const magnitude = negative ? -value : value;
+  const factor = 10n ** BigInt(scale);
+  const whole = magnitude / factor;
+  const fraction = (magnitude % factor).toString().padStart(scale, "0").replace(/0+$/, "");
+  return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+}
+
+function roundHalfUpDiv(numerator: bigint, denominator: bigint): bigint {
+  if (numerator < 0n) return -roundHalfUpDiv(-numerator, denominator);
+  return (numerator + denominator / 2n) / denominator;
+}
+
+function quantiteDecimal6(value: number): string {
+  return decimalDepuisEchelle(decimalToRoundedInt(value, 6), 6);
+}
+
+function quantiteCibleMicro(qteMicro: bigint, pourcentage: number): bigint {
+  const pourcentageMicro = decimalToRoundedInt(pourcentage, 6);
+  return roundHalfUpDiv(qteMicro * pourcentageMicro, 100_000_000n);
+}
+
+export function calculerLigneMonetaireExact(
+  quantite: number | string,
+  prixUnitaireHt: number | string,
+  tauxTva: number | string
+): { ht_cents: bigint; tva_cents: bigint; ttc_cents: bigint } {
+  const qMicro = decimalToScaledInt(quantite, 6);
+  const puMicro = decimalToScaledInt(prixUnitaireHt, 6);
+  const rateBp = decimalToScaledInt(tauxTva, 2);
+  if (qMicro < 0n || puMicro < 0n || rateBp < 0n) throw new Error("Valeur monétaire négative");
+  if (![0n, 550n, 1000n, 2000n].includes(rateBp)) throw new Error("Taux non supporté par le moteur");
+  const htCents = (qMicro * puMicro + 5_000_000_000n) / 10_000_000_000n;
+  const tvaCents = (htCents * rateBp + 5_000n) / 10_000n;
+  return { ht_cents: htCents, tva_cents: tvaCents, ttc_cents: htCents + tvaCents };
+}
+
+export function montantHtLigneExact(qte: number, prixUnitaireHt: number, tauxTva: number): number {
+  return Number(calculerLigneMonetaireExact(qte, prixUnitaireHt, tauxTva).ht_cents) / 100;
+}
+
 export function arrondirCentimes(montant: number): number {
-  if (!Number.isFinite(montant)) return 0;
-  return Math.round((montant + Number.EPSILON) * 100) / 100;
+  const cents = decimalToRoundedInt(montant, 2);
+  return Number(cents) / 100;
+}
+
+function montantDepuisCentimes(cents: bigint): number {
+  return Number(cents) / 100;
 }
 
 /**
@@ -132,7 +235,8 @@ export function fmtEuro(montant?: number | null): string {
  * Validation du plafond légal de la retenue de garantie (Loi n° 71-584 : max 5%)
  */
 export function validerTauxRetenue(taux: number | undefined | null): number {
-  if (taux === undefined || taux === null || Number.isNaN(taux)) return 0;
+  if (taux === undefined || taux === null) return 0;
+  if (!Number.isFinite(taux)) throw new Error("Taux de retenue non fini");
   if (taux < 0) return 0;
   if (taux > 5) return 5;
   return arrondirCentimes(taux);
@@ -146,37 +250,48 @@ export function calculerDevis(
   tvaDefautPct: TauxTvaBtp = 10,
   acomptePct: number = 30
 ): CalculDevisResult {
-  let total_ht = 0;
-  let total_tva = 0;
-  let cout_matiere_ht = 0;
-  let cout_main_oeuvre_ht = 0;
+  let totalHtCents = 0n;
+  let totalTvaCents = 0n;
+  let coutMatiereCents = 0n;
+  let coutMainOeuvreCents = 0n;
 
   for (const l of lignes) {
     if (l.a_chiffrer) continue;
-    const qte = Math.max(0, Number(l.qte) || 0);
-    const puHt = Math.max(0, Number(l.pu_ht) || 0);
-    const puRevient = Math.max(0, Number(l.pu_revient) || 0);
+    const qte = Number(l.qte);
+    const puHt = Number(l.pu_ht);
+    const puRevient = Number(l.pu_revient);
+    if (![qte, puHt, puRevient].every(Number.isFinite)) throw new Error("Quantité ou prix non fini");
+    if (qte < 0 || puHt < 0 || puRevient < 0) throw new Error("Quantité ou prix négatif");
     const tvaLigne = l.tva_pct !== undefined ? l.tva_pct : tvaDefautPct;
 
-    const montantHt = arrondirCentimes(qte * puHt);
-    const montantTva = arrondirCentimes((montantHt * tvaLigne) / 100);
-    const coutHt = arrondirCentimes(qte * puRevient);
-
-    total_ht = arrondirCentimes(total_ht + montantHt);
-    total_tva = arrondirCentimes(total_tva + montantTva);
+    const lineMoney = calculerLigneMonetaireExact(qte, puHt, tvaLigne);
+    const coutCents = calculerLigneMonetaireExact(qte, puRevient, 0).ht_cents;
+    totalHtCents += lineMoney.ht_cents;
+    totalTvaCents += lineMoney.tva_cents;
 
     if (l.type_cout === "main_oeuvre") {
-      cout_main_oeuvre_ht = arrondirCentimes(cout_main_oeuvre_ht + coutHt);
+      coutMainOeuvreCents += coutCents;
     } else {
-      cout_matiere_ht = arrondirCentimes(cout_matiere_ht + coutHt);
+      coutMatiereCents += coutCents;
     }
   }
 
-  const total_ttc = arrondirCentimes(total_ht + total_tva);
-  const cout_total_ht = arrondirCentimes(cout_matiere_ht + cout_main_oeuvre_ht);
-  const marge_ht = arrondirCentimes(total_ht - cout_total_ht);
-  const marge_pct = total_ht > 0 ? arrondirCentimes((marge_ht / total_ht) * 100) : 0;
-  const acompte_ttc = arrondirCentimes((total_ttc * Math.max(0, Math.min(100, acomptePct))) / 100);
+  const totalTtcCents = totalHtCents + totalTvaCents;
+  const coutTotalCents = coutMatiereCents + coutMainOeuvreCents;
+  const margeCents = totalHtCents - coutTotalCents;
+  if (!Number.isFinite(acomptePct)) throw new Error("Pourcentage d'acompte non fini");
+  const acompteBp = decimalToRoundedInt(Math.max(0, Math.min(100, acomptePct)), 2);
+  const acompteCents = roundHalfUpDiv(totalTtcCents * acompteBp, 10_000n);
+  const margePercentHundredths = totalHtCents > 0n ? roundHalfUpDiv(margeCents * 10_000n, totalHtCents) : 0n;
+  const total_ht = montantDepuisCentimes(totalHtCents);
+  const total_tva = montantDepuisCentimes(totalTvaCents);
+  const total_ttc = montantDepuisCentimes(totalTtcCents);
+  const cout_matiere_ht = montantDepuisCentimes(coutMatiereCents);
+  const cout_main_oeuvre_ht = montantDepuisCentimes(coutMainOeuvreCents);
+  const cout_total_ht = montantDepuisCentimes(coutTotalCents);
+  const marge_ht = montantDepuisCentimes(margeCents);
+  const marge_pct = Number(margePercentHundredths) / 100;
+  const acompte_ttc = montantDepuisCentimes(acompteCents);
 
   return {
     total_ht,
@@ -207,11 +322,14 @@ export function calculerMontantsFacture(
   net_a_payer_ttc: number;
 } {
   const retenue = validerTauxRetenue(retenueGarantiePct);
-  const montant_ht = arrondirCentimes(Math.max(0, montantBaseHt));
-  const montant_tva = arrondirCentimes((montant_ht * tvaPct) / 100);
-  const montant_ttc = arrondirCentimes(montant_ht + montant_tva);
-  const montant_retenue_ttc = arrondirCentimes((montant_ttc * retenue) / 100);
-  const net_a_payer_ttc = arrondirCentimes(Math.max(0, montant_ttc - montant_retenue_ttc));
+  const baseCents = calculerLigneMonetaireExact(1, Math.max(0, montantBaseHt), tvaPct);
+  const montant_ht = montantDepuisCentimes(baseCents.ht_cents);
+  const montant_tva = montantDepuisCentimes(baseCents.tva_cents);
+  const montant_ttc = montantDepuisCentimes(baseCents.ttc_cents);
+  const retenueBp = decimalToScaledInt(retenue, 2);
+  const retenueCents = roundHalfUpDiv(baseCents.ttc_cents * retenueBp, 10_000n);
+  const montant_retenue_ttc = montantDepuisCentimes(retenueCents);
+  const net_a_payer_ttc = montantDepuisCentimes(baseCents.ttc_cents - retenueCents);
 
   return {
     montant_ht,
@@ -296,422 +414,272 @@ export function importerBesoinsCalepinageEnLignesDevis(
 /**
  * Données initiales BNA réalistes (connectées aux chantiers Martin, Dupont, Bernard)
  */
-const INITIAL_DEVIS: DevisItem[] = [
-  {
-    id: "dev-martin-01",
-    numero: "DEV-2026-0042",
-    chantier_id: "martin",
-    chantier_nom: "Terrasse Martin",
-    client_nom: "M. & Mme Martin",
-    ville: "Mérignac",
-    metier: "terrasse",
-    objet: "Création terrasse bois exotique Cumaru 42 m² sur plots réglables (DTU 51.4)",
-    statut: "signe",
-    date_creation: "2026-10-12",
-    date_validite: "2026-11-12",
-    tva_pct: 10,
-    acompte_pct: 30,
-    retenue_garantie_pct: 5,
-    lignes: [
-      {
-        id: "l1",
-        designation: "Fourniture Lames Cumaru KD 21x145 mm + Lambourdes Exotiques + Bande EPDM",
-        description: "Incluant 8% de perte de calepinage et double lambourdage aux aboutages",
-        qte: 42,
-        unite: "m²",
-        pu_ht: 115,
-        pu_revient: 74,
-        type_cout: "matiere",
-      },
-      {
-        id: "l2",
-        designation: "Plots réglables 50/80 mm & Visserie Inox A4 5x50 mm",
-        description: "218 plots + 3 boîtes de 500 vis Inox A4",
-        qte: 1,
-        unite: "forfait",
-        pu_ht: 890,
-        pu_revient: 520,
-        type_cout: "matiere",
-      },
-      {
-        id: "l3",
-        designation: "Main d'œuvre pose structure, réglage planéité et vissage platelage (NF DTU 51.4)",
-        description: "Pose avec gabarit d'écartement 5 mm et bandeau périphérique",
-        qte: 42,
-        unite: "m²",
-        pu_ht: 75,
-        pu_revient: 40,
-        type_cout: "main_oeuvre",
-      },
-    ],
-  },
-  {
-    id: "dev-dupont-02",
-    numero: "DEV-2026-0045",
-    chantier_id: "dupont",
-    chantier_nom: "Bardage Dupont",
-    client_nom: "SCI Dupont",
-    ville: "Pessac",
-    metier: "facade",
-    objet: "Habillage façade en bardage HPL Polyrey & ossature bois ventilée 58 m² (DTU 41.2 / 45.4)",
-    statut: "signe",
-    date_creation: "2026-10-18",
-    date_validite: "2026-11-18",
-    tva_pct: 10,
-    acompte_pct: 30,
-    retenue_garantie_pct: 5,
-    lignes: [
-      {
-        id: "l4",
-        designation: "Panneaux HPL Compact Polyrey Façade 8 mm + Pare-pluie HPV + Grilles anti-rongeurs",
-        description: "Inclus bande EPDM sur montants et rivets laqués point fixe / coulissant",
-        qte: 58,
-        unite: "m²",
-        pu_ht: 128,
-        pu_revient: 82,
-        type_cout: "matiere",
-      },
-      {
-        id: "l5",
-        designation: "Main d'œuvre pose ossature secondaire, lame d'air 20 mm et panneaux HPL",
-        description: "Échafaudage de pied inclus",
-        qte: 58,
-        unite: "m²",
-        pu_ht: 88,
-        pu_revient: 48,
-        type_cout: "main_oeuvre",
-      },
-    ],
-  },
-  {
-    id: "dev-bernard-03",
-    numero: "DEV-2026-0048",
-    chantier_id: "bernard",
-    chantier_nom: "Clôture Bernard",
-    client_nom: "M. Bernard",
-    ville: "Talence",
-    metier: "cloture",
-    objet: "Pose clôture composite occultante 30 ml avec scellement béton (NF P98-405)",
-    statut: "signe",
-    date_creation: "2026-10-22",
-    date_validite: "2026-11-22",
-    tva_pct: 20,
-    acompte_pct: 30,
-    retenue_garantie_pct: 0,
-    lignes: [
-      {
-        id: "l6",
-        designation: "Fourniture poteaux aluminium anthracite, lames composites et béton de scellement",
-        qte: 30,
-        unite: "ml",
-        pu_ht: 86,
-        pu_revient: 54,
-        type_cout: "matiere",
-      },
-      {
-        id: "l7",
-        designation: "Pose, carottage/fouilles 50x50 cm et réglage au cordeau laser",
-        qte: 30,
-        unite: "ml",
-        pu_ht: 62,
-        pu_revient: 34,
-        type_cout: "main_oeuvre",
-      },
-    ],
-  },
-  {
-    id: "dev-prospect-04",
-    numero: "DEV-2026-0051",
-    chantier_nom: "Terrasse & Pergola Lemoine",
-    client_nom: "Mme Lemoine",
-    ville: "Arcachon",
-    metier: "terrasse",
-    objet: "Création contour piscine en Pin Classe 4 Marron 35 m² (DTU 51.4)",
-    statut: "envoye",
-    date_creation: "2026-10-30",
-    date_validite: "2026-11-30",
-    tva_pct: 20,
-    acompte_pct: 30,
-    retenue_garantie_pct: 0,
-    lignes: [
-      {
-        id: "l8",
-        designation: "Fourniture Pin Classe 4 raboté 27x145 mm + Lambourdes Classe 4 + Visserie A4 (piscine sel)",
-        qte: 35,
-        unite: "m²",
-        pu_ht: 52,
-        pu_revient: 31,
-        type_cout: "matiere",
-      },
-      {
-        id: "l9",
-        designation: "Main d'œuvre pose sur plots et découpes margelles piscine",
-        qte: 35,
-        unite: "m²",
-        pu_ht: 68,
-        pu_revient: 38,
-        type_cout: "main_oeuvre",
-      },
-    ],
-  },
-];
+function throwOnError(error: { message: string } | null): void {
+  if (error) throw new Error(error.message);
+}
 
-const INITIAL_FACTURES: FactureItem[] = [
-  {
-    id: "fac-martin-ac",
-    numero: "FAC-2026-0081",
-    devis_id: "dev-martin-01",
-    devis_numero: "DEV-2026-0042",
-    chantier_id: "martin",
-    chantier_nom: "Terrasse Martin",
-    client_nom: "M. & Mme Martin",
-    type: "acompte",
-    statut: "payee",
-    date_emission: "2026-10-15",
-    date_echeance: "2026-10-25",
-    tva_pct: 10,
-    retenue_garantie_pct: 0,
-    montant_ht: 2661,
-    montant_tva: 266.1,
-    montant_ttc: 2927.1,
-    montant_retenue_ttc: 0,
-    net_a_payer_ttc: 2927.1,
-    objet: "Facture d'acompte 30% à la commande — Terrasse Martin",
-  },
-  {
-    id: "fac-martin-sit1",
-    numero: "FAC-2026-0088",
-    devis_id: "dev-martin-01",
-    devis_numero: "DEV-2026-0042",
-    chantier_id: "martin",
-    chantier_nom: "Terrasse Martin",
-    client_nom: "M. & Mme Martin",
-    type: "situation",
-    statut: "emise",
-    avancement_pct: 65,
-    date_emission: "2026-11-01",
-    date_echeance: "2026-11-15",
-    tva_pct: 10,
-    retenue_garantie_pct: 5,
-    montant_ht: 3104.5,
-    montant_tva: 310.45,
-    montant_ttc: 3414.95,
-    montant_retenue_ttc: 170.75,
-    net_a_payer_ttc: 3244.2,
-    objet: "Situation d'avancement n°1 (65% cumulé, déduction acompte 30%) — Terrasse Martin",
-  },
-  {
-    id: "fac-dupont-ac",
-    numero: "FAC-2026-0084",
-    devis_id: "dev-dupont-02",
-    devis_numero: "DEV-2026-0045",
-    chantier_id: "dupont",
-    chantier_nom: "Bardage Dupont",
-    client_nom: "SCI Dupont",
-    type: "acompte",
-    statut: "payee",
-    date_emission: "2026-10-20",
-    date_echeance: "2026-10-30",
-    tva_pct: 10,
-    retenue_garantie_pct: 0,
-    montant_ht: 3758.4,
-    montant_tva: 375.84,
-    montant_ttc: 4134.24,
-    montant_retenue_ttc: 0,
-    net_a_payer_ttc: 4134.24,
-    objet: "Facture d'acompte 30% démarrage chantier — Bardage Dupont",
-  },
-  {
-    id: "fac-bernard-ac",
-    numero: "FAC-2026-0086",
-    devis_id: "dev-bernard-03",
-    devis_numero: "DEV-2026-0048",
-    chantier_id: "bernard",
-    chantier_nom: "Clôture Bernard",
-    client_nom: "M. Bernard",
-    type: "acompte",
-    statut: "en_retard",
-    date_emission: "2026-10-22",
-    date_echeance: "2026-10-31",
-    tva_pct: 20,
-    retenue_garantie_pct: 0,
-    montant_ht: 1332,
-    montant_tva: 266.4,
-    montant_ttc: 1598.4,
-    montant_retenue_ttc: 0,
-    net_a_payer_ttc: 1598.4,
-    objet: "Facture d'acompte 30% approvisionnement clôture — Clôture Bernard",
-  },
-];
+function localDatePlusDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
-/**
- * Lecture / Écriture des Devis
- */
-export function getDevisList(): DevisItem[] {
-  if (typeof window === "undefined") return INITIAL_DEVIS;
-  try {
-    const raw = localStorage.getItem(STORAGE_DEVIS_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_DEVIS_KEY, JSON.stringify(INITIAL_DEVIS));
-      return INITIAL_DEVIS;
+function mapDevisRow(row: DevisFinanceRow, lines: DevisLigneFinanceRow[], clientNom: string, chantierNom: string, ville: string): DevisItem {
+  const lineItems: LigneChiffrage[] = lines.map((line) => ({
+    id: line.id, designation: line.designation, description: line.description ?? undefined,
+    qte: Number(line.quantite), unite: line.unite, pu_ht: Number(line.prix_unitaire_ht),
+    pu_revient: Number(line.prix_revient_ht), type_cout: line.type_cout,
+    tva_pct: Number(line.taux_tva) as TauxTvaBtp,
+  }));
+  const firstRate = lineItems[0]?.tva_pct ?? 0;
+  return {
+    id: row.id, numero: row.numero ?? "BROUILLON", entreprise_id: row.entreprise_id, client_id: row.client_id,
+    chantier_id: row.chantier_id ?? undefined, chantier_nom: chantierNom, client_nom: clientNom, ville,
+    metier: row.metier, objet: row.objet, statut: row.statut.toLowerCase() as StatutDevis,
+    date_creation: row.date_creation, date_validite: row.date_validite, tva_pct: firstRate,
+    acompte_pct: Number(row.acompte_pct), retenue_garantie_pct: Number(row.retenue_garantie_pct),
+    lignes: lineItems, notes: row.notes ?? undefined,
+  };
+}
+
+export async function getDevisList(supabase: SupabaseClient<Database>): Promise<DevisItem[]> {
+  const { data: rows, error } = await supabase.from("devis").select("*").order("date_creation", { ascending: false });
+  throwOnError(error);
+  if (!rows?.length) return [];
+  const ids = rows.map((row) => row.id);
+  const clientIds = [...new Set(rows.map((row) => row.client_id))];
+  const chantierIds = [...new Set(rows.map((row) => row.chantier_id).filter((id): id is string => !!id))];
+  const [lineResult, clientResult, chantierResult] = await Promise.all([
+    supabase.from("devis_lignes").select("*").in("devis_id", ids),
+    supabase.from("clients").select("id,nom,prenom,societe,ville").in("id", clientIds),
+    chantierIds.length ? supabase.from("chantiers").select("id,nom,ville").in("id", chantierIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  throwOnError(lineResult.error); throwOnError(clientResult.error); throwOnError(chantierResult.error);
+  const clients = new Map((clientResult.data ?? []).map((row) => [row.id, row]));
+  const chantiersById = new Map((chantierResult.data ?? []).map((row) => [row.id, row]));
+  const lines = lineResult.data ?? [];
+  return rows.map((row) => {
+    const client = clients.get(row.client_id);
+    const chantier = row.chantier_id ? chantiersById.get(row.chantier_id) : undefined;
+    const label = client?.societe || [client?.prenom, client?.nom].filter(Boolean).join(" ") || "Client";
+    return mapDevisRow(row, lines.filter((line) => line.devis_id === row.id), label, chantier?.nom ?? "", chantier?.ville ?? client?.ville ?? "");
+  });
+}
+
+export async function creerNouveauDevis(
+  supabase: SupabaseClient<Database>,
+  input: Omit<DevisItem, "id" | "numero" | "date_creation" | "date_validite" | "entreprise_id">
+): Promise<DevisItem> {
+  const payload = {
+    client_id: input.client_id,
+    chantier_id: input.chantier_id ?? null,
+    date_validite: localDatePlusDays(30),
+    objet: input.objet,
+    metier: input.metier,
+    acompte_pct: input.acompte_pct,
+    retenue_garantie_pct: input.retenue_garantie_pct,
+    notes: input.notes ?? null,
+    lignes: input.lignes.filter((line) => !line.a_chiffrer).map((line) => ({
+      designation: line.designation, description: line.description ?? null, quantite: quantiteDecimal6(line.qte),
+      unite: line.unite, prix_unitaire_ht: quantiteDecimal6(line.pu_ht), prix_revient_ht: quantiteDecimal6(line.pu_revient),
+      taux_tva: String(line.tva_pct ?? input.tva_pct), type_cout: line.type_cout,
+    })),
+  };
+  const { data: id, error } = await supabase.rpc("creer_devis_financier", { p_payload: payload });
+  throwOnError(error);
+  const devis = await getDevisList(supabase);
+  const created = devis.find((item) => item.id === id);
+  if (!created) throw new Error("Devis créé mais introuvable après relecture");
+  return created;
+}
+
+export async function updateStatutDevis(supabase: SupabaseClient<Database>, id: string, statut: StatutDevis): Promise<DevisItem[]> {
+  if (statut !== "signe") throw new Error("Seule la transition ENVOYE → SIGNE est exposée");
+  const { error } = await supabase.rpc("marquer_devis_signe", { p_devis_id: id });
+  throwOnError(error);
+  return getDevisList(supabase);
+}
+
+export async function supprimerDevis(supabase: SupabaseClient<Database>, id: string): Promise<DevisItem[]> {
+  const { error } = await supabase.rpc("supprimer_devis_brouillon", { p_devis_id: id });
+  throwOnError(error);
+  return getDevisList(supabase);
+}
+
+function mapFactureRow(row: FactureFinanceRow, lines: FactureLigneFinanceRow[], clientNom: string, chantierNom: string, devisNumero?: string): FactureItem {
+  const today = localDatePlusDays(0);
+  const status: StatutFacture = row.statut === "PAYEE" ? "payee" :
+    row.statut === "PARTIELLEMENT_PAYEE" ? "partiellement_payee" :
+    row.statut === "ANNULEE" ? "annulee" :
+    row.statut === "BROUILLON" ? "brouillon" :
+    row.date_echeance && row.date_echeance < today ? "en_retard" : "emise";
+  const totalTtc = Number(row.total_ttc);
+  const retenue = Number(row.montant_retenue_ttc);
+  return {
+    id: row.id, numero: row.numero ?? "", devis_id: row.devis_id ?? undefined, devis_numero: devisNumero,
+    chantier_id: row.chantier_id ?? undefined, chantier_nom: chantierNom, client_nom: clientNom,
+    type: row.type.toLowerCase() as TypeFacture, statut: status, date_emission: row.date_emission ?? "",
+    contract_ref: row.contract_ref ?? undefined,
+    date_echeance: row.date_echeance ?? "", tva_pct: (Number(lines[0]?.taux_tva ?? 0)) as TauxTvaBtp,
+    retenue_garantie_pct: Number(row.retenue_garantie_pct), avancement_pct: row.avancement_pct ?? undefined,
+    montant_ht: Number(row.total_ht), montant_tva: Number(row.total_tva), montant_ttc: totalTtc,
+    montant_retenue_ttc: retenue, net_a_payer_ttc: arrondirCentimes(totalTtc - retenue), objet: row.objet, lignes: lines,
+  };
+}
+
+export async function getFacturesList(supabase: SupabaseClient<Database>): Promise<FactureItem[]> {
+  const { data: rows, error } = await supabase.from("factures").select("*").order("date_emission", { ascending: false });
+  throwOnError(error);
+  if (!rows?.length) return [];
+  const ids = rows.map((row) => row.id);
+  const clientIds = [...new Set(rows.map((row) => row.client_id))];
+  const chantierIds = [...new Set(rows.map((row) => row.chantier_id).filter((id): id is string => !!id))];
+  const devisIds = [...new Set(rows.map((row) => row.devis_id).filter((id): id is string => !!id))];
+  const [lineResult, clientResult, chantierResult, devisResult] = await Promise.all([
+    supabase.from("facture_lignes").select("*").in("facture_id", ids),
+    supabase.from("clients").select("id,nom,prenom,societe").in("id", clientIds),
+    chantierIds.length ? supabase.from("chantiers").select("id,nom").in("id", chantierIds) : Promise.resolve({ data: [], error: null }),
+    devisIds.length ? supabase.from("devis").select("id,numero").in("id", devisIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  throwOnError(lineResult.error); throwOnError(clientResult.error); throwOnError(chantierResult.error); throwOnError(devisResult.error);
+  const clients = new Map((clientResult.data ?? []).map((row) => [row.id, row]));
+  const chantiersById = new Map((chantierResult.data ?? []).map((row) => [row.id, row]));
+  const devisById = new Map((devisResult.data ?? []).map((row) => [row.id, row.numero ?? undefined]));
+  return rows.map((row) => {
+    const client = clients.get(row.client_id);
+    const chantier = row.chantier_id ? chantiersById.get(row.chantier_id) : undefined;
+    const clientNom = client?.societe || [client?.prenom, client?.nom].filter(Boolean).join(" ") || "Client";
+    return mapFactureRow(row, (lineResult.data ?? []).filter((line) => line.facture_id === row.id), clientNom, chantier?.nom ?? "", row.devis_id ? devisById.get(row.devis_id) : undefined);
+  });
+}
+
+export async function creerFactureDepuisDevis(
+  supabase: SupabaseClient<Database>, devis: DevisItem, type: TypeFacture, avancementPct = 50, contractRef?: string,
+): Promise<FactureItem> {
+  const invoices = await getFacturesList(supabase);
+  const related = invoices.filter((invoice) => invoice.devis_id === devis.id && invoice.statut !== "annulee" && invoice.statut !== "brouillon");
+  if (type === "situation" && (!Number.isFinite(avancementPct) || avancementPct < 0 || avancementPct > 100)) {
+    throw new Error("L'avancement cumulé doit être compris entre 0 et 100 %");
+  }
+  if (type === "acompte" && (!Number.isFinite(devis.acompte_pct) || devis.acompte_pct < 0 || devis.acompte_pct > 100)) {
+    throw new Error("Le pourcentage d'acompte doit être compris entre 0 et 100 %");
+  }
+  const previouslyBilledByLine = new Map<string, bigint>();
+  for (const invoice of related) {
+    for (const invoiceLine of invoice.lignes) {
+      if (!invoiceLine.devis_ligne_id) continue;
+      const billedMicro = decimalToScaledInt(invoiceLine.quantite, 6);
+      previouslyBilledByLine.set(
+        invoiceLine.devis_ligne_id,
+        (previouslyBilledByLine.get(invoiceLine.devis_ligne_id) ?? 0n) + billedMicro,
+      );
     }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_DEVIS;
-  } catch {
-    return INITIAL_DEVIS;
   }
+  const applicableRetention = type === "acompte" ? 0 : devis.retenue_garantie_pct;
+  const lines = devis.lignes.map((line) => {
+    const totalQuantityMicro = decimalToScaledInt(line.qte, 6);
+    const previouslyBilledMicro = previouslyBilledByLine.get(line.id) ?? 0n;
+    const targetQuantityMicro = type === "solde" ? totalQuantityMicro :
+      quantiteCibleMicro(totalQuantityMicro, type === "acompte" ? devis.acompte_pct : avancementPct);
+    const quantityMicro = targetQuantityMicro > previouslyBilledMicro
+      ? targetQuantityMicro - previouslyBilledMicro
+      : 0n;
+    return {
+      devis_ligne_id: line.id, designation: line.designation, quantite: decimalDepuisEchelle(quantityMicro, 6), unite: line.unite,
+      prix_unitaire_ht: quantiteDecimal6(line.pu_ht), taux_tva: String(line.tva_pct ?? devis.tva_pct),
+    };
+  }).filter((line) => line.quantite !== "0");
+  if (!lines.length) throw new Error("Aucun montant restant à facturer pour ce devis");
+  const objet = type === "acompte" ? `Facture d'acompte (${devis.acompte_pct}%) — ${devis.chantier_nom}` :
+    type === "situation" ? `Situation d'avancement (${avancementPct}% cumulé) — ${devis.chantier_nom}` :
+      `Facture de solde — ${devis.chantier_nom}`;
+  const { data: id, error } = await supabase.rpc("emettre_facture_financiere", {
+    p_payload: {
+      client_id: devis.client_id, devis_id: devis.id, chantier_id: devis.chantier_id ?? null,
+      type: type.toUpperCase(), objet, avancement_pct: type === "situation" ? avancementPct : null,
+      retenue_garantie_pct: applicableRetention, date_echeance: localDatePlusDays(15),
+      contract_ref: contractRef?.trim() || null,
+      lignes: lines,
+    },
+  });
+  throwOnError(error);
+  const created = (await getFacturesList(supabase)).find((item) => item.id === id);
+  if (!created) throw new Error("Facture émise mais introuvable après relecture");
+  return created;
 }
 
-export function saveDevisList(list: DevisItem[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_DEVIS_KEY, JSON.stringify(list));
-  } catch {
-    // ignore
-  }
+export async function supprimerFacture(_supabase: SupabaseClient<Database>, _id: string): Promise<never> {
+  throw new Error("Une facture émise est irrévocable et ne peut pas être supprimée");
 }
 
-export function creerNouveauDevis(
-  input: Omit<DevisItem, "id" | "numero" | "date_creation" | "date_validite">
-): DevisItem {
-  const list = getDevisList();
-  const nextNum = 42 + list.length + 10;
-  const now = new Date();
-  const validite = new Date(now);
-  validite.setDate(validite.getDate() + 30);
+export interface AvoirLigneInput {
+  designation: string;
+  quantite: number;
+  unite: string;
+  prix_unitaire_ht: number;
+  taux_tva: TauxTvaBtp;
+}
 
-  const newDevis: DevisItem = {
+type AvoirInputCommun = { client_id: string; objet: string; lignes: AvoirLigneInput[] };
+export type AvoirEmissionInput = AvoirInputCommun & (
+  | { scope: "INVOICE"; origin_invoice_id: string }
+  | { scope: "GLOBAL"; global_basis: "CONTRACT"; period_start: string; period_end: string; contract_ref: string }
+  | { scope: "GLOBAL"; global_basis: "INVOICES"; period_start: string; period_end: string; invoice_ids: string[] }
+);
+
+export async function emettreAvoir(supabase: SupabaseClient<Database>, input: AvoirEmissionInput): Promise<string> {
+  const lines = input.lignes.map((line) => ({
+    designation: line.designation, quantite: quantiteDecimal6(line.quantite), unite: line.unite,
+    prix_unitaire_ht: String(line.prix_unitaire_ht), taux_tva: String(line.taux_tva),
+  }));
+  const payload = {
     ...input,
-    id: `dev-${Date.now()}`,
-    numero: `DEV-${now.getFullYear()}-00${nextNum}`,
-    date_creation: now.toISOString().slice(0, 10),
-    date_validite: validite.toISOString().slice(0, 10),
+    lignes: lines,
+    ...(input.scope === "GLOBAL" && input.global_basis === "CONTRACT"
+      ? { contract_ref: input.contract_ref.trim() }
+      : {}),
   };
-
-  const updated = [newDevis, ...list];
-  saveDevisList(updated);
-  return newDevis;
+  const { data, error } = await supabase.rpc("emettre_avoir_financier", { p_payload: payload });
+  throwOnError(error);
+  if (!data) throw new Error("La RPC n’a pas retourné l’identifiant de l’avoir émis");
+  return data;
 }
 
-export function updateStatutDevis(id: string, statut: StatutDevis): DevisItem[] {
-  const list = getDevisList();
-  const updated = list.map((d) => (d.id === id ? { ...d, statut } : d));
-  saveDevisList(updated);
-  return updated;
+export async function getAvoirsList(supabase: SupabaseClient<Database>): Promise<AvoirItem[]> {
+  const { data: rows, error } = await supabase.from("avoirs").select("*").order("date_emission", { ascending: false });
+  throwOnError(error);
+  if (!rows?.length) return [];
+  const ids = rows.map((row) => row.id);
+  const [lineResult, linksResult] = await Promise.all([
+    supabase.from("avoir_lignes").select("*").in("avoir_id", ids),
+    supabase.from("credit_note_invoices").select("*").in("credit_note_id", ids),
+  ]);
+  throwOnError(lineResult.error); throwOnError(linksResult.error);
+  return rows.map((row) => ({
+    ...row,
+    lignes: (lineResult.data ?? []).filter((line) => line.avoir_id === row.id),
+    factures_rattachees: (linksResult.data ?? []).filter((link) => link.credit_note_id === row.id),
+  }));
 }
 
-export function supprimerDevis(id: string): DevisItem[] {
-  const list = getDevisList();
-  const updated = list.filter((d) => d.id !== id);
-  saveDevisList(updated);
-  return updated;
-}
-
-/**
- * Lecture / Écriture des Factures
- */
-export function getFacturesList(): FactureItem[] {
-  if (typeof window === "undefined") return INITIAL_FACTURES;
-  try {
-    const raw = localStorage.getItem(STORAGE_FACTURES_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_FACTURES_KEY, JSON.stringify(INITIAL_FACTURES));
-      return INITIAL_FACTURES;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_FACTURES;
-  } catch {
-    return INITIAL_FACTURES;
-  }
-}
-
-export function saveFacturesList(list: FactureItem[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_FACTURES_KEY, JSON.stringify(list));
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Génère automatiquement une facture (Acompte, Situation d'avancement ou Solde) à partir d'un Devis
- */
-export function creerFactureDepuisDevis(
-  devis: DevisItem,
-  type: TypeFacture,
-  avancementPct: number = 50
-): FactureItem {
-  const factures = getFacturesList();
-  const calcDevis = calculerDevis(devis.lignes, devis.tva_pct, devis.acompte_pct);
-
-  let ratio = 1;
-  let retenueApplicable = devis.retenue_garantie_pct;
-  let objet = "";
-
-  if (type === "acompte") {
-    ratio = devis.acompte_pct / 100;
-    retenueApplicable = 0; // Pas de retenue de garantie sur l'acompte initial
-    objet = `Facture d'acompte (${devis.acompte_pct}%) — ${devis.chantier_nom}`;
-  } else if (type === "situation") {
-    const pctClamp = Math.max(10, Math.min(95, avancementPct));
-    ratio = pctClamp / 100;
-    objet = `Facture de situation d'avancement (${pctClamp}%) — ${devis.chantier_nom}`;
-  } else {
-    // Calcul du solde restant à facturer sur ce devis
-    const dejaFactureHt = factures
-      .filter((f) => f.devis_id === devis.id && f.statut !== "annulee")
-      .reduce((acc, f) => acc + f.montant_ht, 0);
-    const resteHt = Math.max(0, calcDevis.total_ht - dejaFactureHt);
-    ratio = calcDevis.total_ht > 0 ? resteHt / calcDevis.total_ht : 0.3;
-    if (ratio <= 0) ratio = 0.35;
-    objet = `Facture de solde de fin de travaux — ${devis.chantier_nom}`;
-  }
-
-  const montantBaseHt = arrondirCentimes(calcDevis.total_ht * ratio);
-  const montants = calculerMontantsFacture(montantBaseHt, devis.tva_pct, retenueApplicable);
-
-  const now = new Date();
-  const echeance = new Date(now);
-  echeance.setDate(echeance.getDate() + 15);
-  const nextNum = 80 + factures.length + 10;
-
-  const newFacture: FactureItem = {
-    id: `fac-${Date.now()}`,
-    numero: `FAC-${now.getFullYear()}-00${nextNum}`,
-    devis_id: devis.id,
-    devis_numero: devis.numero,
-    chantier_id: devis.chantier_id,
-    chantier_nom: devis.chantier_nom,
-    client_nom: devis.client_nom,
-    type,
-    statut: "emise",
-    avancement_pct: type === "situation" ? avancementPct : undefined,
-    date_emission: now.toISOString().slice(0, 10),
-    date_echeance: echeance.toISOString().slice(0, 10),
-    tva_pct: devis.tva_pct,
-    retenue_garantie_pct: retenueApplicable,
-    ...montants,
-    objet,
+export function inspecterDonneesFinancieresLocales(): { devis: string | null; factures: string | null } {
+  if (typeof window === "undefined") throw new Error("Inspection disponible uniquement dans le navigateur");
+  return {
+    devis: window.localStorage.getItem("bna_devis_items_v1"),
+    factures: window.localStorage.getItem("bna_factures_items_v1"),
   };
-
-  const updated = [newFacture, ...factures];
-  saveFacturesList(updated);
-  return newFacture;
 }
 
-export function updateStatutFacture(id: string, statut: StatutFacture): FactureItem[] {
-  const list = getFacturesList();
-  const updated = list.map((f) => (f.id === id ? { ...f, statut } : f));
-  saveFacturesList(updated);
-  return updated;
-}
-
-export function supprimerFacture(id: string): FactureItem[] {
-  const list = getFacturesList();
-  const updated = list.filter((f) => f.id !== id);
-  saveFacturesList(updated);
-  return updated;
+export function exporterDonneesFinancieresLocalesJson(): string {
+  const existing = inspecterDonneesFinancieresLocales();
+  const preserve = (raw: string | null): unknown => {
+    if (raw === null) return null;
+    try { return JSON.parse(raw) as unknown; } catch { return { raw_non_parse: raw }; }
+  };
+  return JSON.stringify({
+    bna_devis_items_v1: preserve(existing.devis),
+    bna_factures_items_v1: preserve(existing.factures),
+  }, null, 2);
 }
 
 /**
