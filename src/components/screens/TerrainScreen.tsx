@@ -33,7 +33,7 @@ export const TerrainScreen: React.FC<TerrainScreenProps> = ({
     return (
       <div className="py-12 text-center space-y-3 bg-white rounded-2xl border border-bna-border p-6 mt-3">
         <p className="text-sm font-semibold text-bna-anthracite">Aucun chantier actif sur le terrain</p>
-        <p className="text-xs text-bna-muted">Veuillez créer ou sélectionner un chantier depuis l'onglet Chantiers.</p>
+        <p className="text-xs text-bna-muted">Veuillez créer ou sélectionner un chantier depuis Cockpit &gt; Chantier.</p>
       </div>
     );
   }

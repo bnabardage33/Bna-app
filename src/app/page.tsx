@@ -8,32 +8,29 @@ import { PlanningCard } from "@/components/dashboard/PlanningCard";
 import { FeaturedProjectCard } from "@/components/dashboard/FeaturedProjectCard";
 import { RiskProjectsCard } from "@/components/dashboard/RiskProjectsCard";
 import { QuickLinksCard } from "@/components/dashboard/QuickLinksCard";
-import { BottomNav } from "@/components/navigation/BottomNav";
+import { BottomNav, type MainTab } from "@/components/navigation/BottomNav";
 import { QuickActionModal } from "@/components/navigation/QuickActionModal";
 import { CalepinageModal } from "@/components/calepinage/CalepinageModal";
-import { TerrainScreen } from "@/components/screens/TerrainScreen";
 import { CockpitScreen } from "@/components/screens/CockpitScreen";
+import { CockpitHubScreen, type CockpitSection } from "@/components/screens/CockpitHubScreen";
 import { AssistantScreen } from "@/components/screens/AssistantScreen";
 import { DevisFinanceScreen } from "@/components/screens/DevisFinanceScreen";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { NewChantierModal } from "@/components/chantiers/NewChantierModal";
-import { ChantierCard } from "@/components/chantiers/ChantierCard";
 import { PhotoConstatModal } from "@/components/chantiers/PhotoConstatModal";
-import { ClientsScreen } from "@/components/clients/ClientsScreen";
 import { CorbeilleModal } from "@/components/corbeille/CorbeilleModal";
 import { Chantier } from "@/types/metier";
-import { MOCK_CHANTIERS } from "@/data/mockChantiers";
 import { createClient } from "@/lib/supabase/client";
 import { getChantiers, softDeleteChantier, isUuid } from "@/lib/services/chantierService";
 import type { CalepinageVersionItem } from "@/lib/services/calepinageService";
 import { useAuth } from "@/lib/auth/useAuth";
-import { HardHat, Users, Trash2, FileText, Sparkles, Plus } from "lucide-react";
 
 export default function HomePage() {
   const router = useRouter();
   const { user, profil, loading: authLoading, isAuthenticated } = useAuth();
-  const [currentTab, setCurrentTab] = useState("accueil");
-  const [chantiersSubTab, setChantiersSubTab] = useState<"chantiers" | "clients">("chantiers");
+  const [currentTab, setCurrentTab] = useState<MainTab>("accueil");
+  const [cockpitSection, setCockpitSection] = useState<CockpitSection>("client");
+  const [isChantierDetailOpen, setIsChantierDetailOpen] = useState(false);
 
   const [isQuickActionOpen, setIsQuickActionOpen] = useState(false);
   const [isCalepinageOpen, setIsCalepinageOpen] = useState(false);
@@ -100,6 +97,18 @@ export default function HomePage() {
     chantiers[0] ||
     null;
 
+  const openChantierCockpit = (chantierId: string) => {
+    setActiveChantierId(chantierId);
+    setCurrentTab("cockpit");
+    setIsChantierDetailOpen(true);
+  };
+
+  const openCockpitHub = (section?: CockpitSection) => {
+    setCurrentTab("cockpit");
+    setIsChantierDetailOpen(false);
+    if (section) setCockpitSection(section);
+  };
+
   const displayName =
     profil?.prenom ||
     (user?.email?.toLowerCase().includes("bna") ? "Gaël" : "") ||
@@ -153,17 +162,13 @@ export default function HomePage() {
                 <PlanningCard
                   chantiers={chantiers}
                   activeChantierId={activeChantierId}
-                  onSelectChantier={(id) => {
-                    setActiveChantierId(id);
-                    setCurrentTab("cockpit");
-                  }}
+                  onSelectChantier={openChantierCockpit}
                 />
                 <FeaturedProjectCard
                   chantier={currentChantier}
                   onOpenCockpit={() => {
                     if (currentChantier) {
-                      setActiveChantierId(currentChantier.id);
-                      setCurrentTab("cockpit");
+                      openChantierCockpit(currentChantier.id);
                     }
                   }}
                   onNewChantier={() => setIsNewChantierOpen(true)}
@@ -171,10 +176,7 @@ export default function HomePage() {
                 />
                 <RiskProjectsCard
                   chantiers={chantiers}
-                  onSelectChantier={(id) => {
-                    setActiveChantierId(id);
-                    setCurrentTab("cockpit");
-                  }}
+                  onSelectChantier={openChantierCockpit}
                 />
                 <QuickLinksCard
                   chantiersCount={chantiers.length}
@@ -182,155 +184,55 @@ export default function HomePage() {
                     setCalepinageSourceVersion(null);
                     setIsCalepinageOpen(true);
                   }}
-                  onOpenDevis={() => setCurrentTab("devis")}
-                  onOpenChantiers={() => setCurrentTab("chantiers")}
+                  onOpenDevis={() => setCurrentTab("facturation")}
+                  onOpenChantiers={() => openCockpitHub("chantier")}
                 />
               </div>
             </div>
           </div>
         )}
 
-        {/* ÉCRAN TERRAIN (Générique 3 métiers) */}
-        {currentTab === "terrain" && (
-          <TerrainScreen
-            chantier={currentChantier}
-            chantiers={chantiers}
-            onOpenCalepinage={() => {
-              setCalepinageSourceVersion(null);
-              setIsCalepinageOpen(true);
-            }}
-            onOpenCockpit={() => setCurrentTab("cockpit")}
-            onSelectChantier={(id) => setActiveChantierId(id)}
-          />
-        )}
-
-        {/* ÉCRAN COCKPIT CHANTIER (Générique 3 métiers) */}
+        {/* HUB COCKPIT : Clients, chantiers et terrain */}
         {currentTab === "cockpit" && (
-          <CockpitScreen
-            chantier={currentChantier}
-            onBack={() => setCurrentTab("chantiers")}
-            onOpenCalepinage={(sourceVersion) => {
-              setCalepinageSourceVersion(sourceVersion || null);
-              setIsCalepinageOpen(true);
-            }}
-            onSoftDelete={async (id) => {
-              await handleSoftDeleteChantier(id);
-              setCurrentTab("chantiers");
-            }}
-            refreshKey={cockpitRefreshKey}
-          />
+          isChantierDetailOpen ? (
+            <CockpitScreen
+              chantier={currentChantier}
+              onBack={() => setIsChantierDetailOpen(false)}
+              onOpenCalepinage={(sourceVersion) => {
+                setCalepinageSourceVersion(sourceVersion || null);
+                setIsCalepinageOpen(true);
+              }}
+              onSoftDelete={async (id) => {
+                await handleSoftDeleteChantier(id);
+                setIsChantierDetailOpen(false);
+                setCockpitSection("chantier");
+              }}
+              refreshKey={cockpitRefreshKey}
+            />
+          ) : (
+            <CockpitHubScreen
+              section={cockpitSection}
+              onSectionChange={setCockpitSection}
+              chantiers={chantiers}
+              activeChantier={currentChantier}
+              onOpenCorbeille={() => setIsCorbeilleOpen(true)}
+              onNewChantier={() => setIsNewChantierOpen(true)}
+              onOpenChantier={openChantierCockpit}
+              onSoftDeleteChantier={handleSoftDeleteChantier}
+              onOpenCalepinage={() => {
+                setCalepinageSourceVersion(null);
+                setIsCalepinageOpen(true);
+              }}
+              onOpenChantierCockpit={() => {
+                if (currentChantier) openChantierCockpit(currentChantier.id);
+              }}
+              onSelectChantier={setActiveChantierId}
+            />
+          )
         )}
 
-        {/* ÉCRAN CHANTIERS & CLIENTS */}
-        {currentTab === "chantiers" && (
-          <div className="py-6 animate-in fade-in duration-150">
-            {/* Toggle Clients / Chantiers */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-neutral-100 rounded-2xl mb-4 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setChantiersSubTab("clients")}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
-                  chantiersSubTab === "clients"
-                    ? "bg-white text-bna-copper shadow-xs"
-                    : "text-bna-muted hover:text-bna-anthracite"
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>Clients</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setChantiersSubTab("chantiers")}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl transition-all ${
-                  chantiersSubTab === "chantiers"
-                    ? "bg-white text-bna-copper shadow-xs"
-                    : "text-bna-muted hover:text-bna-anthracite"
-                }`}
-              >
-                <HardHat className="w-4 h-4" />
-                <span>Chantiers ({chantiers.length})</span>
-              </button>
-            </div>
-
-            {/* VUE SOUS-ONGLET CLIENTS */}
-            {chantiersSubTab === "clients" ? (
-              <ClientsScreen
-                chantiers={chantiers}
-                onOpenCorbeille={() => setIsCorbeilleOpen(true)}
-                onOpenChantier={(id) => {
-                  setActiveChantierId(id);
-                  setCurrentTab("cockpit");
-                }}
-              />
-            ) : (
-              /* VUE SOUS-ONGLET CHANTIERS */
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <HardHat className="w-6 h-6 text-bna-copper" />
-                    <div>
-                      <h1 className="font-display font-bold text-2xl">Chantiers</h1>
-                      <p className="text-[11px] text-bna-muted">
-                        {chantiers.length} chantier{chantiers.length > 1 ? "s" : ""} actif{chantiers.length > 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setIsCorbeilleOpen(true)}
-                      className="p-2 border border-bna-border bg-white hover:bg-neutral-50 text-bna-muted hover:text-bna-anthracite rounded-xl transition-colors"
-                      title="Ouvrir la corbeille"
-                      aria-label="Corbeille"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setIsNewChantierOpen(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper hover:bg-bna-copper-hover text-white text-xs font-semibold rounded-xl shadow-xs transition-colors active:scale-95"
-                    >
-                      <Plus className="w-4 h-4 stroke-[2.5]" />
-                      <span>Nouveau</span>
-                    </button>
-                  </div>
-                </div>
-
-                {chantiers.length === 0 ? (
-                  <div className="bg-white border border-bna-border rounded-2xl p-6 text-center shadow-xs">
-                    <p className="text-sm font-semibold text-bna-anthracite">Aucun chantier actif</p>
-                    <p className="text-xs text-bna-muted mt-1">
-                      Créez un chantier en sélectionnant un client existant.
-                    </p>
-                    <button
-                      onClick={() => setIsNewChantierOpen(true)}
-                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 bg-bna-copper text-white text-xs font-semibold rounded-xl"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Nouveau chantier</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
-                    {chantiers.map((ch) => (
-                      <ChantierCard
-                        key={ch.id}
-                        chantier={ch}
-                        onOpen={(id) => {
-                          setActiveChantierId(id);
-                          setCurrentTab("cockpit");
-                        }}
-                        onSoftDelete={handleSoftDeleteChantier}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ÉCRAN DEVIS, FACTURES & RENTABILITÉ */}
-        {currentTab === "devis" && (
+        {/* ÉCRAN FACTURATION : devis, factures et rentabilité */}
+        {currentTab === "facturation" && (
           <DevisFinanceScreen
             chantiers={chantiers}
             onOpenCalepinage={() => {
@@ -350,14 +252,13 @@ export default function HomePage() {
             activeChantierId={activeChantierId}
             onSelectChantier={(id) => setActiveChantierId(id)}
             onOpenCockpit={(id) => {
-              setActiveChantierId(id);
-              setCurrentTab("cockpit");
+              openChantierCockpit(id);
             }}
             onOpenCalepinage={() => {
               setCalepinageSourceVersion(null);
               setIsCalepinageOpen(true);
             }}
-            onOpenDevis={() => setCurrentTab("devis")}
+            onOpenDevis={() => setCurrentTab("facturation")}
             onChantierUpdated={refreshChantiers}
           />
         )}
@@ -365,8 +266,11 @@ export default function HomePage() {
 
       {/* Navigation partagée (Bottom Bar sur mobile < md | Top Bar pro sur Desktop >= md) */}
       <BottomNav
-        currentTab={currentTab === "cockpit" ? "chantiers" : currentTab}
-        onTabChange={(tab) => setCurrentTab(tab)}
+        currentTab={currentTab}
+        onTabChange={(tab) => {
+          setCurrentTab(tab);
+          if (tab === "cockpit") setIsChantierDetailOpen(false);
+        }}
         onOpenQuickAction={() => setIsQuickActionOpen(true)}
         onOpenCalepinage={() => {
           setCalepinageSourceVersion(null);
